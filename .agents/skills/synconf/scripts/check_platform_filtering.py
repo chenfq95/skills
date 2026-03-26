@@ -10,21 +10,11 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from synconf_common import normalize_platform_name
+
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 GENERATOR_PATH = REPO_ROOT / ".agents/skills/synconf/scripts/generate_sync.py"
-
-
-def normalize_platform_name(name: str) -> str:
-    """Normalize platform labels to the names used by synconf."""
-    lowered = name.strip().lower()
-    if lowered == "darwin":
-        return "macos"
-    if lowered in {"windows", "win32"}:
-        return "windows"
-    if lowered == "linux":
-        return "linux"
-    return lowered or "unknown"
 
 
 def run_command(

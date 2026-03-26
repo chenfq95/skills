@@ -7,11 +7,19 @@ Reference list of common software configuration file locations by platform.
 | Software | macOS | Linux | Windows |
 |----------|-------|-------|---------|
 | Zsh | `~/.zshrc`, `~/.zprofile`, `~/.zshenv` | Same | N/A |
-| Bash | `~/.bashrc`, `~/.bash_profile` | Same | N/A |
-| Fish | `~/.config/fish/config.fish` | Same | N/A |
-| PowerShell | N/A | N/A | `~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1` |
+| Bash | `~/.bashrc`, `~/.bash_profile`, `~/.bash_aliases` | Same | N/A |
+| Fish | `~/.config/fish/config.fish`, `~/.config/fish/` | Same | N/A |
+| PowerShell 7 | N/A | N/A | `~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1` |
+| Windows PowerShell 5 | N/A | N/A | `~/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1` |
+| VSCode PowerShell profile | N/A | N/A | `~/Documents/PowerShell/Microsoft.VSCode_profile.ps1` |
+
+## Prompt & Theme
+
+| Software | macOS | Linux | Windows |
+|----------|-------|-------|---------|
 | Oh My Zsh | `~/.oh-my-zsh/custom/` | Same | N/A |
 | Starship | `~/.config/starship.toml` | Same | `~/.config/starship.toml` |
+| Powerlevel10k | `~/.config/powerlevel10k/` | Same | N/A |
 | Atuin | `~/.config/atuin/config.toml` | Same | `~/.config/atuin/config.toml` |
 
 ## Git
@@ -48,23 +56,23 @@ Reference list of common software configuration file locations by platform.
 | Windows Terminal | N/A | N/A | `~/AppData/Local/Microsoft/Windows Terminal/` |
 | iTerm2 | `~/Library/Application Support/iTerm2/` | N/A | N/A |
 | Readline | `~/.inputrc` | Same | Same |
-| PowerShell 7 profile | N/A | N/A | `~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1` |
-| Windows PowerShell 5 profile | N/A | N/A | `~/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1` |
 
 ## Dev Tools
 
 | Software | macOS/Linux | Windows |
 |----------|-------------|---------|
 | npm | `~/.npmrc` | `~/AppData/Roaming/npm/npmrc` |
-| Yarn | `~/.yarnrc` | Same |
-| Cargo/Rust | `~/.cargo/config.toml` | Same |
+| Yarn | `~/.yarnrc`, `~/.yarnrc.yml` | Same |
+| pnpm | `~/.npmrc` | Same |
+| Cargo/Rust | `~/.cargo/config.toml`, `~/.cargo/config` | Same |
 | pip | `~/.pip/pip.conf` | `~/pip/pip.ini` |
 | Poetry | `~/Library/Application Support/pypoetry/` | `~/.config/pypoetry/` | `~/AppData/Roaming/pypoetry/` |
 | Pylint | `~/.pylintrc` | Same |
 | Flake8 | `~/.flake8` | Same |
 | ESLint | `~/.eslintrc.*` | Same |
-| Prettier | `~/.prettierrc` | Same |
+| Prettier | `~/.prettierrc`, `~/.prettierrc.*` | Same |
 | EditorConfig | `~/.editorconfig` | Same |
+| RuboCop | `~/.rubocop.yml` | Same |
 | ASDF | `~/.tool-versions` | Same |
 
 ## Containers & Cloud

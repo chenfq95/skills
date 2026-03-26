@@ -11,60 +11,27 @@ import json
 import shutil
 import subprocess
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-
-DEFAULT_REPO_DIR = Path.home() / ".synconf"
-
-
-# Category detection rules: (pattern, category)
-# Order matters - first match wins
-CATEGORY_RULES = [
-    (".zsh", "shell"),
-    (".bash", "shell"),
-    (".profile", "shell"),
-    (".zprofile", "shell"),
-    ("powershell", "shell"),
-    ("Microsoft.PowerShell_profile.ps1", "shell"),
-    ("Microsoft.VSCode_profile.ps1", "shell"),
-    (".git", "git"),
-    (".vim", "editor"),
-    ("nvim", "editor"),
-    ("code/user", "editor"),
-    ("cursor/user", "editor"),
-    ("/zed", "editor"),
-    ("sublime text/packages/user", "editor"),
-    (".editorconfig", "editor"),
-    (".tmux", "terminal"),
-    (".inputrc", "terminal"),
-    ("alacritty", "terminal"),
-    ("ghostty", "terminal"),
-    ("kitty", "terminal"),
-    ("wezterm", "terminal"),
-    ("Windows Terminal", "terminal"),
-    (".npmrc", "dev"),
-    ("npmrc", "dev"),
-    (".cargo", "dev"),
-    (".pylintrc", "dev"),
-    (".flake8", "dev"),
-    (".eslintrc", "dev"),
-    (".prettierrc", "dev"),
-    (".rubocop", "dev"),
-    ("pip.ini", "dev"),
-]
-
-
-@dataclass
-class FileMapping:
-    source: str
-    software: str
-    category: str
-    repo_rel: str
-    home_rel: str
-    is_dir: bool
-    platforms: Optional[List[str]] = None
+from synconf_common import (
+    DEFAULT_REPO_DIR,
+    CATEGORY_RULES,
+    SOFTWARE_RULES,
+    PLATFORM_RULES,
+    HOME_TOKEN,
+    HOME_POSIX_TOKEN,
+    FileMapping,
+    infer_category,
+    infer_software,
+    relative_to_home,
+    display_home_path,
+    repo_relative_path,
+    detect_supported_platforms,
+    normalize_platform_name,
+    setup_logging,
+)
 
 
 def write_manifest(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
@@ -78,7 +45,7 @@ def write_manifest(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
         ],
     }
     manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Updated manifest.json")
+    print("Updated manifest.json")
 
 
 def load_manifest(dotfiles_dir: Path) -> List[FileMapping]:
@@ -109,135 +76,6 @@ def merge_mappings(
     for mapping in new:
         merged[mapping.repo_rel] = mapping
     return [merged[key] for key in sorted(merged)]
-
-
-SOFTWARE_RULES = [
-    ("microsoft.powershell_profile.ps1", "PowerShell"),
-    ("windows terminal", "Windows Terminal"),
-    ("code/user", "VS Code"),
-    ("cursor/user", "Cursor"),
-    ("/zed", "Zed"),
-    ("sublime text/packages/user", "Sublime Text"),
-    ("nvim", "Neovim"),
-    (".vim", "Vim"),
-    (".gitconfig", "Git"),
-    (".gitignore", "Git"),
-    (".gitmessage", "Git"),
-    (".zsh", "Zsh"),
-    (".bash", "Bash"),
-    (".profile", "Shell"),
-    (".tmux", "Tmux"),
-    ("alacritty", "Alacritty"),
-    ("ghostty", "Ghostty"),
-    ("kitty", "Kitty"),
-    ("wezterm", "WezTerm"),
-    ("starship", "Starship"),
-    ("npmrc", "npm"),
-    ("pip.ini", "pip"),
-    (".cargo", "Cargo"),
-    (".pylintrc", "Pylint"),
-    (".flake8", "Flake8"),
-    (".eslintrc", "ESLint"),
-    (".prettierrc", "Prettier"),
-    (".editorconfig", "EditorConfig"),
-]
-
-
-PLATFORM_RULES = [
-    ("appdata/roaming/code/user", ["windows"]),
-    ("appdata/roaming/cursor/user", ["windows"]),
-    ("appdata/roaming/zed", ["windows"]),
-    ("appdata/roaming/sublime text/packages/user", ["windows"]),
-    ("appdata/roaming/ghostty", ["windows"]),
-    ("appdata/roaming/npm/npmrc", ["windows"]),
-    ("appdata/local/microsoft/windows terminal", ["windows"]),
-    ("documents/windowspowershell/", ["windows"]),
-    ("documents/powershell/microsoft.powershell_profile.ps1", ["windows"]),
-    ("documents/powershell/microsoft.vscode_profile.ps1", ["windows"]),
-    ("microsoft/windows terminal", ["windows"]),
-    ("/pip/pip.ini", ["windows"]),
-    ("library/application support/code/user", ["macos"]),
-    ("library/application support/cursor/user", ["macos"]),
-    ("library/application support/zed", ["macos"]),
-    ("library/application support/sublime text/packages/user", ["macos"]),
-    ("library/application support/com.mitchellh.ghostty", ["macos"]),
-    ("library/application support/iterm2", ["macos"]),
-    ("library/application support/pypoetry", ["macos"]),
-    ("/brewfile", ["macos"]),
-    (".config/code/user", ["linux"]),
-    (".config/cursor/user", ["linux"]),
-    (".config/zed", ["linux"]),
-    (".config/sublime-text/packages/user", ["linux"]),
-    (".config/ghostty", ["linux"]),
-    (".config/pypoetry", ["linux"]),
-    ("appdata/", ["windows"]),
-    ("library/application support/", ["macos"]),
-]
-
-
-def normalize_platform_name(name: str) -> str:
-    """Normalize platform labels for manifest metadata and generated scripts."""
-    lowered = name.strip().lower()
-    if lowered == "darwin":
-        return "macos"
-    if lowered in {"windows", "win32"}:
-        return "windows"
-    if lowered == "linux":
-        return "linux"
-    return lowered
-
-
-def detect_supported_platforms(path: Path, software: str) -> Optional[List[str]]:
-    """Infer whether a config path is intended for a specific platform."""
-    combined = " ".join(
-        [
-            path.as_posix().replace("\\\\", "/").lower(),
-            software.strip().lower(),
-        ]
-    )
-    for pattern, platforms in PLATFORM_RULES:
-        if pattern in combined:
-            return [normalize_platform_name(item) for item in platforms]
-    return None
-
-
-def categorize_file(path: Path) -> str:
-    """Determine the category for a config file."""
-    text = path.as_posix().lower()
-    for pattern, category in CATEGORY_RULES:
-        if pattern.lower() in text:
-            return category
-    return "other"
-
-
-def infer_software(path: Path) -> str:
-    """Infer a user-facing software name from a config path."""
-    text = path.as_posix().lower()
-    for pattern, software in SOFTWARE_RULES:
-        if pattern.lower() in text:
-            return software
-    return path.name or path.as_posix()
-
-
-def relative_to_home(path: Path) -> Path:
-    """Return a path relative to the user's home directory when possible."""
-    home = Path.home().resolve()
-    try:
-        return path.resolve().relative_to(home)
-    except ValueError:
-        return Path(path.name)
-
-
-def display_home_path(path: Path) -> str:
-    """Return a stable ~/ path for display."""
-    rel = relative_to_home(path)
-    return "~/" + rel.as_posix() if rel.as_posix() != "." else "~"
-
-
-def repo_relative_path(src: Path, category: str) -> Path:
-    """Place copied configs under category while preserving home-relative structure."""
-    rel = relative_to_home(src)
-    return Path(category) / rel
 
 
 def ensure_repo_dir(dotfiles_dir: Path) -> None:
@@ -275,7 +113,7 @@ def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
             print(f"Warning: {src} not found, skipping")
             continue
 
-        category = categorize_file(src)
+        category = infer_category(src)
         software = infer_software(src)
         repo_rel = repo_relative_path(src, category)
         dest = dotfiles_dir / repo_rel
@@ -302,6 +140,294 @@ def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
         print(f"Copied {src} -> {repo_rel.as_posix()}")
 
     return mappings
+
+
+# ============================================================================
+# Generated script templates
+# ============================================================================
+
+COMMON_HEADER = '''#!/usr/bin/env python3
+"""__DOCSTRING__"""
+
+import difflib
+import json
+import platform
+import shutil
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+
+DOTFILES_DIR = Path(__file__).resolve().parent__DOTFILES_PARENT__
+MERGE_NOTES_DIR = DOTFILES_DIR / "merge-notes"
+PENDING_MERGES_PATH = MERGE_NOTES_DIR / "pending-merges.json"
+MANIFEST_PATH = DOTFILES_DIR / "manifest.json"
+HOME_TOKEN = "__SYNCONF_HOME__"
+HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
+
+
+def path_from_rel(path_str: str) -> Path:
+    """Convert a relative path string to Path object."""
+    return Path(path_str)
+
+
+def read_text_file(path: Path) -> Optional[str]:
+    """Read a text file, returning None if not readable as UTF-8."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return None
+
+
+def normalize_text(text: str) -> str:
+    """Replace home paths with placeholders for portability."""
+    home = Path.home()
+    return text.replace(home.as_posix(), HOME_POSIX_TOKEN).replace(str(home), HOME_TOKEN)
+
+
+def render_text(text: str) -> str:
+    """Replace placeholders with actual home paths."""
+    home = Path.home()
+    return text.replace(HOME_POSIX_TOKEN, home.as_posix()).replace(HOME_TOKEN, str(home))
+
+
+def prompt_yes_no(message: str, default: bool = False) -> bool:
+    """Prompt for yes/no confirmation."""
+    suffix = "[Y/n]" if default else "[y/N]"
+    answer = input(message + " " + suffix + " ").strip().lower()
+    if not answer:
+        return default
+    return answer in {"y", "yes"}
+
+
+def read_text_lines(path: Path) -> Optional[List[str]]:
+    """Read a text file as lines."""
+    text = read_text_file(path)
+    if text is None:
+        return None
+    return text.splitlines()
+
+
+def summarize_directory(path: Path) -> List[str]:
+    """List all files in a directory recursively."""
+    return sorted(
+        str(child.relative_to(path)).replace('\\\\', '/')
+        for child in path.rglob('*')
+        if child.is_file()
+    )
+
+
+def files_equal(src: Path, dest: Path) -> bool:
+    """Check if two files have equal content."""
+    src_lines = read_text_lines(src)
+    dest_lines = read_text_lines(dest)
+    if src_lines is None or dest_lines is None:
+        return src.read_bytes() == dest.read_bytes()
+    return src_lines == dest_lines
+
+
+def directories_equal(src: Path, dest: Path) -> bool:
+    """Check if two directories have equal content."""
+    src_entries = summarize_directory(src)
+    dest_entries = summarize_directory(dest)
+    if src_entries != dest_entries:
+        return False
+    return all(files_equal(src / rel_path, dest / rel_path) for rel_path in src_entries)
+
+
+def entries_equal(src: Path, dest: Path, is_dir: bool) -> bool:
+    """Check if source and destination entries are equal."""
+    if not dest.exists():
+        return False
+    if is_dir:
+        return directories_equal(src, dest)
+    return files_equal(src, dest)
+
+
+def load_manifest() -> Dict[str, object]:
+    """Load manifest.json or return default structure."""
+    if not MANIFEST_PATH.exists():
+        return {"version": 1, "files": []}
+    try:
+        return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"version": 1, "files": []}
+
+
+def save_manifest(payload: Dict[str, object]) -> None:
+    """Save manifest.json."""
+    MANIFEST_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def detect_environment(manifest: Dict[str, object]) -> None:
+    """Print environment detection summary."""
+    config_roots = [
+        "~/.config",
+        "~/Library/Application Support",
+        "~/AppData/Roaming",
+        "~/AppData/Local",
+        "~/Documents/PowerShell",
+    ]
+    print("Environment detection:")
+    print("- OS: " + platform.system())
+    print("- Home: " + str(Path.home()))
+    print("- Repo: " + str(DOTFILES_DIR))
+    print("- Repo exists: yes")
+    print("- Python configured: " + ("yes" if sys.executable else "no"))
+    print("- Python executable: " + (sys.executable or "not found"))
+    print("- Existing tracked configs: " + str(len(manifest.get("files", []))))
+    print("- Config roots: " + ", ".join(config_roots))
+    print()
+'''
+
+DIFF_FUNCTIONS = '''
+
+def diff_file(src: Path, dest: Path, src_label: str = "src", dest_label: str = "dest") -> bool:
+    """Show unified diff between two files. Returns True if files differ."""
+    src_lines = read_text_lines(src)
+    dest_lines = read_text_lines(dest)
+    if src_lines is None or dest_lines is None:
+        same = src.read_bytes() == dest.read_bytes()
+        if not same:
+            print("Binary or non-UTF8 file differs; review manually.")
+        return not same
+
+    if src_lines == dest_lines:
+        return False
+
+    for line in difflib.unified_diff(
+        dest_lines,
+        src_lines,
+        fromfile=f"{dest_label}/{dest}",
+        tofile=f"{src_label}/{src}",
+        lineterm="",
+    ):
+        print(line)
+    return True
+
+
+def print_diff(src: Path, dest: Path, is_dir: bool, src_label: str = "src", dest_label: str = "dest") -> bool:
+    """Show diff for file or directory. Returns True if content differs."""
+    if is_dir:
+        src_entries = summarize_directory(src)
+        dest_entries = summarize_directory(dest)
+        differs = False
+        if src_entries != dest_entries:
+            differs = True
+            print("Directory file list differs:")
+            for line in difflib.unified_diff(
+                dest_entries,
+                src_entries,
+                fromfile=f"{dest_label}/{dest}",
+                tofile=f"{src_label}/{src}",
+                lineterm="",
+            ):
+                print(line)
+
+        for rel_path in sorted(set(src_entries) & set(dest_entries)):
+            src_file = src / rel_path
+            dest_file = dest / rel_path
+            if files_equal(src_file, dest_file):
+                continue
+            differs = True
+            print()
+            print(f"Diff for {rel_path}:")
+            diff_file(src_file, dest_file, src_label, dest_label)
+
+        return differs
+
+    print("File contents differ:")
+    return diff_file(src, dest, src_label, dest_label)
+'''
+
+MERGE_FUNCTIONS = '''
+
+def save_merge_note(entry: Dict[str, object], note: str, direction: str = "backup") -> Path:
+    """Save merge instructions to a markdown file."""
+    MERGE_NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    note_path = MERGE_NOTES_DIR / f"{timestamp}-{direction}-{entry['software'].lower().replace(' ', '-')}.md"
+    note_path.write_text(
+        "\\n".join(
+            [
+                f"# Merge note for {entry['software']} ({direction})",
+                f"- Local path: `{Path.home() / path_from_rel(entry['home_rel'])}`",
+                f"- Repo path: `{DOTFILES_DIR / path_from_rel(entry['repo_rel'])}`",
+                "",
+                "## User instructions",
+                note.strip() or "(none)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    print(f"Saved merge note to {note_path}")
+    return note_path
+
+
+def append_pending_merge(entry: Dict[str, object], note_path: Optional[Path], reason: str, direction: str = "backup") -> None:
+    """Record a pending merge that needs manual resolution."""
+    MERGE_NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    if PENDING_MERGES_PATH.exists():
+        try:
+            payload = json.loads(PENDING_MERGES_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = {"items": []}
+    else:
+        payload = {"items": []}
+
+    payload.setdefault("items", []).append(
+        {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "software": entry["software"],
+            "direction": direction,
+            "local_path": str(Path.home() / path_from_rel(entry["home_rel"])),
+            "repo_path": str(DOTFILES_DIR / path_from_rel(entry["repo_rel"])),
+            "reason": reason,
+            "merge_note": str(note_path) if note_path else None,
+        }
+    )
+    PENDING_MERGES_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"Recorded pending merge in {PENDING_MERGES_PATH}")
+
+
+def prompt_merge_instructions(entry: Dict[str, object], direction: str = "backup") -> Optional[Path]:
+    """Prompt user for merge instructions."""
+    print("Describe how these two versions should be merged.")
+    print("Press Enter on an empty line to finish. Leave blank to skip.")
+    lines = []
+    while True:
+        line = input("> ")
+        if not line:
+            break
+        lines.append(line)
+    if lines:
+        return save_merge_note(entry, "\\n".join(lines), direction)
+    return None
+
+
+def choose_conflict_action(direction: str = "backup") -> str:
+    """Prompt user to choose how to handle a conflict."""
+    if direction == "restore":
+        print("Choose what to do with this sync conflict:")
+        print("  1. overwrite - replace the local version with the repo version")
+        print("  2. skip - keep the local version unchanged for now")
+    else:
+        print("Choose what to do with this conflict:")
+        print("  1. overwrite - replace the repo version with the local version")
+        print("  2. skip - keep the repo version unchanged for now")
+    print("  3. manual - leave both as-is and resolve manually later")
+    while True:
+        answer = input("Select [1/2/3]: ").strip().lower()
+        if answer in {"1", "overwrite", "o"}:
+            return "overwrite"
+        if answer in {"2", "skip", "s"}:
+            return "skip"
+        if answer in {"3", "manual", "m", "manual-merge"}:
+            return "manual"
+        print("Please enter 1, 2, or 3.")
+'''
 
 
 def generate_install(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
@@ -331,21 +457,16 @@ def path_from_rel(path_str: str) -> Path:
     return Path(path_str)
 
 
-def normalize_text(text: str) -> str:
-    home = Path.home()
-    return text.replace(home.as_posix(), HOME_POSIX_TOKEN).replace(str(home), HOME_TOKEN)
-
-
-def render_text(text: str) -> str:
-    home = Path.home()
-    return text.replace(HOME_POSIX_TOKEN, home.as_posix()).replace(HOME_TOKEN, str(home))
-
-
 def read_text_file(path: Path) -> Optional[str]:
     try:
         return path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
         return None
+
+
+def render_text(text: str) -> str:
+    home = Path.home()
+    return text.replace(HOME_POSIX_TOKEN, home.as_posix()).replace(HOME_TOKEN, str(home))
 
 
 def contains_placeholders(path: Path) -> bool:
@@ -433,7 +554,7 @@ def main() -> None:
             print(f"Warning: {{src}} not found, skipping")
 
     print()
-    print(f"Dotfiles installed successfully!")
+    print("Dotfiles installed successfully!")
     if BACKUP_DIR.exists():
         print(f"Backup of old files saved to: {{BACKUP_DIR}}")
 
@@ -442,9 +563,9 @@ if __name__ == "__main__":
     main()
 '''
     script_path = dotfiles_dir / "install.py"
-    script_path.write_text(script)
+    script_path.write_text(script, encoding="utf-8")
     script_path.chmod(0o755)
-    print(f"Generated install.py")
+    print("Generated install.py")
 
 
 def generate_backup(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
@@ -453,59 +574,20 @@ def generate_backup(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
         asdict(mapping) for mapping in sorted(mappings, key=lambda item: item.repo_rel)
     ]
 
-    script = f'''#!/usr/bin/env python3
-"""Interactively backup current configs into the dotfiles repo."""
+    # Build script from components
+    header = COMMON_HEADER.replace("__DOCSTRING__", "Interactively backup current configs into the dotfiles repo.")
+    header = header.replace("__DOTFILES_PARENT__", ".parent")
 
-import difflib
-import json
-import platform
-import shutil
-import sys
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional
-
-
-DOTFILES_DIR = Path(__file__).resolve().parent.parent
-MERGE_NOTES_DIR = DOTFILES_DIR / "merge-notes"
-PENDING_MERGES_PATH = MERGE_NOTES_DIR / "pending-merges.json"
-MANIFEST_PATH = DOTFILES_DIR / "manifest.json"
-HOME_TOKEN = "__SYNCONF_HOME__"
-HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
-
+    script = header + f'''
 FILES = {entries!r}
+'''
+    script += DIFF_FUNCTIONS
+    script += MERGE_FUNCTIONS
 
-
-def path_from_rel(path_str: str) -> Path:
-    return Path(path_str)
-
-
-def read_text_file(path: Path) -> Optional[str]:
-    try:
-        return path.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):
-        return None
-
-
-def normalize_text(text: str) -> str:
-    home = Path.home()
-    return text.replace(home.as_posix(), HOME_POSIX_TOKEN).replace(str(home), HOME_TOKEN)
-
-
-def load_manifest() -> Dict[str, object]:
-    if not MANIFEST_PATH.exists():
-        return {{"version": 1, "files": FILES}}
-    try:
-        return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {{"version": 1, "files": FILES}}
-
-
-def save_manifest(payload: Dict[str, object]) -> None:
-    MANIFEST_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
+    script += f'''
 
 def update_manifest_entries(entries: List[Dict[str, object]]) -> None:
+    """Merge backed-up entries into manifest."""
     payload = load_manifest()
     file_map = dict((item["repo_rel"], item) for item in payload.get("files", []))
     for entry in entries:
@@ -514,178 +596,8 @@ def update_manifest_entries(entries: List[Dict[str, object]]) -> None:
     save_manifest(payload)
 
 
-def detect_environment(manifest: Dict[str, object]) -> None:
-    config_roots = [
-        "~/.config",
-        "~/Library/Application Support",
-        "~/AppData/Roaming",
-        "~/AppData/Local",
-        "~/Documents/PowerShell",
-    ]
-    print("Environment detection:")
-    print("- OS: " + platform.system())
-    print("- Home: " + str(Path.home()))
-    print("- Repo: " + str(DOTFILES_DIR))
-    print("- Repo exists: yes")
-    print("- Python configured: " + ("yes" if sys.executable else "no"))
-    print("- Python executable: " + (sys.executable or "not found"))
-    print("- Existing tracked configs: " + str(len(manifest.get("files", []))))
-    print("- Config roots: " + ", ".join(config_roots))
-    print()
-
-
-def prompt_yes_no(message: str, default: bool = False) -> bool:
-    suffix = "[Y/n]" if default else "[y/N]"
-    answer = input(message + " " + suffix + " ").strip().lower()
-    if not answer:
-        return default
-    return answer in {"y", "yes"}
-
-
-def read_text_lines(path: Path) -> Optional[List[str]]:
-    text = read_text_file(path)
-    if text is None:
-        return None
-    return text.splitlines()
-
-
-def summarize_directory(path: Path) -> List[str]:
-    return sorted(
-        str(child.relative_to(path)).replace('\\\\', '/')
-        for child in path.rglob('*')
-        if child.is_file()
-    )
-
-
-def files_equal(src: Path, dest: Path) -> bool:
-    src_lines = read_text_lines(src)
-    dest_lines = read_text_lines(dest)
-    if src_lines is None or dest_lines is None:
-        return src.read_bytes() == dest.read_bytes()
-    return src_lines == dest_lines
-
-
-def directories_equal(src: Path, dest: Path) -> bool:
-    src_entries = summarize_directory(src)
-    dest_entries = summarize_directory(dest)
-    if src_entries != dest_entries:
-        return False
-    return all(files_equal(src / rel_path, dest / rel_path) for rel_path in src_entries)
-
-
-def entries_equal(src: Path, dest: Path, is_dir: bool) -> bool:
-    if not dest.exists():
-        return False
-    if is_dir:
-        return directories_equal(src, dest)
-    return files_equal(src, dest)
-
-
-def diff_file(src: Path, dest: Path) -> bool:
-    src_lines = read_text_lines(src)
-    dest_lines = read_text_lines(dest)
-    if src_lines is None or dest_lines is None:
-        same = src.read_bytes() == dest.read_bytes()
-        if not same:
-            print("Binary or non-UTF8 file differs; review manually before merging.")
-        return not same
-
-    if src_lines == dest_lines:
-        return False
-
-    for line in difflib.unified_diff(
-        dest_lines,
-        src_lines,
-        fromfile=f"repo/{{dest}}",
-        tofile=f"local/{{src}}",
-        lineterm="",
-    ):
-        print(line)
-    return True
-
-
-def print_diff(src: Path, dest: Path, is_dir: bool) -> bool:
-    if is_dir:
-        src_entries = summarize_directory(src)
-        dest_entries = summarize_directory(dest)
-        differs = False
-        if src_entries != dest_entries:
-            differs = True
-            print("Directory file list differs:")
-            for line in difflib.unified_diff(
-                dest_entries,
-                src_entries,
-                fromfile=f"repo/{{dest}}",
-                tofile=f"local/{{src}}",
-                lineterm="",
-            ):
-                print(line)
-
-        for rel_path in sorted(set(src_entries) & set(dest_entries)):
-            src_file = src / rel_path
-            dest_file = dest / rel_path
-            if files_equal(src_file, dest_file):
-                continue
-            differs = True
-            print()
-            print(f"Diff for {{rel_path}}:")
-            diff_file(src_file, dest_file)
-
-        if not differs:
-            return False
-        return True
-
-    print("File contents differ:")
-    return diff_file(src, dest)
-
-
-def save_merge_note(entry: Dict[str, object], note: str) -> Path:
-    MERGE_NOTES_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    note_path = MERGE_NOTES_DIR / f"{{timestamp}}-{{entry['software'].lower().replace(' ', '-')}}.md"
-    note_path.write_text(
-        "\\n".join(
-            [
-                f"# Merge note for {{entry['software']}}",
-                f"- Local path: `{{Path.home() / path_from_rel(entry['home_rel'])}}`",
-                f"- Repo path: `{{DOTFILES_DIR / path_from_rel(entry['repo_rel'])}}`",
-                "",
-                "## User instructions",
-                note.strip() or "(none)",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    print(f"Saved merge note to {{note_path}}")
-    return note_path
-
-
-def append_pending_merge(entry: Dict[str, object], note_path: Optional[Path], reason: str) -> None:
-    MERGE_NOTES_DIR.mkdir(parents=True, exist_ok=True)
-    if PENDING_MERGES_PATH.exists():
-        try:
-            payload = json.loads(PENDING_MERGES_PATH.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            payload = {{"items": []}}
-    else:
-        payload = {{"items": []}}
-
-    payload.setdefault("items", []).append(
-        {{
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "software": entry["software"],
-            "local_path": str(Path.home() / path_from_rel(entry["home_rel"])),
-            "repo_path": str(DOTFILES_DIR / path_from_rel(entry["repo_rel"])),
-            "reason": reason,
-            "merge_note": str(note_path) if note_path else None,
-        }}
-    )
-    PENDING_MERGES_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Recorded pending merge in {{PENDING_MERGES_PATH}}")
-
-
 def copy_entry(src: Path, dest: Path, is_dir: bool) -> None:
+    """Copy local config to repo with placeholder normalization."""
     if is_dir:
         if dest.exists():
             shutil.rmtree(dest)
@@ -705,37 +617,8 @@ def copy_entry(src: Path, dest: Path, is_dir: bool) -> None:
             dest.write_text(normalize_text(text), encoding="utf-8")
 
 
-def prompt_merge_instructions(entry: Dict[str, object]) -> Optional[Path]:
-    print("Describe how these two versions should be merged.")
-    print("Press Enter on an empty line to finish. Leave blank to skip.")
-    lines = []
-    while True:
-        line = input("> ")
-        if not line:
-            break
-        lines.append(line)
-    if lines:
-        return save_merge_note(entry, "\\n".join(lines))
-    return None
-
-
-def choose_conflict_action() -> str:
-    print("Choose what to do with this conflict:")
-    print("  1. overwrite - replace the repo version with the local version")
-    print("  2. skip - keep the repo version unchanged for now")
-    print("  3. manual - leave both as-is and resolve manually later")
-    while True:
-        answer = input("Select [1/2/3]: ").strip().lower()
-        if answer in {"1", "overwrite", "o"}:
-            return "overwrite"
-        if answer in {"2", "skip", "s"}:
-            return "skip"
-        if answer in {"3", "manual", "m", "manual-merge"}:
-            return "manual"
-        print("Please enter 1, 2, or 3.")
-
-
 def choose_entries(entries: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    """Prompt user to select which configs to back up."""
     print("Select which software configs to back up into ~/.synconf:")
     print("Confirm each numbered software entry individually.")
     chosen = []
@@ -801,16 +684,16 @@ def main() -> None:
                 print("No differences detected. Repo backup already matches the local config.")
                 summary["unchanged"].append(entry["software"])
                 continue
-            differs = print_diff(src, dest, entry["is_dir"])
+            differs = print_diff(src, dest, entry["is_dir"], "local", "repo")
             if differs:
-                note_path = prompt_merge_instructions(entry)
-                action = choose_conflict_action()
+                note_path = prompt_merge_instructions(entry, "backup")
+                action = choose_conflict_action("backup")
                 if action == "skip":
                     print(f"Skipped {{entry['software']}}")
                     summary["skipped"].append(entry["software"])
                     continue
                 if action == "manual":
-                    append_pending_merge(entry, note_path, "manual merge requested")
+                    append_pending_merge(entry, note_path, "manual merge requested", "backup")
                     print(f"Left {{entry['software']}} unchanged for manual merge later")
                     summary["manual"].append(entry["software"])
                     continue
@@ -838,9 +721,9 @@ if __name__ == "__main__":
     scripts_dir = dotfiles_dir / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     script_path = scripts_dir / "backup.py"
-    script_path.write_text(script)
+    script_path.write_text(script, encoding="utf-8")
     script_path.chmod(0o755)
-    print(f"Generated scripts/backup.py")
+    print("Generated scripts/backup.py")
 
 
 def generate_restore(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
@@ -849,61 +732,27 @@ def generate_restore(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
         asdict(mapping) for mapping in sorted(mappings, key=lambda item: item.repo_rel)
     ]
 
-    script = f'''#!/usr/bin/env python3
-"""Interactively sync configs from the dotfiles repo back to the local machine."""
+    # Build script from components
+    header = COMMON_HEADER.replace("__DOCSTRING__", "Interactively sync configs from the dotfiles repo back to the local machine.")
+    header = header.replace("__DOTFILES_PARENT__", ".parent")
 
-import difflib
-import json
-import platform
-import shutil
-import sys
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
-
-DOTFILES_DIR = Path(__file__).resolve().parent.parent
-MERGE_NOTES_DIR = DOTFILES_DIR / "merge-notes"
-PENDING_MERGES_PATH = MERGE_NOTES_DIR / "pending-merges.json"
-MANIFEST_PATH = DOTFILES_DIR / "manifest.json"
-HOME_TOKEN = "__SYNCONF_HOME__"
-HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
+    script = header + f'''
 PLATFORM_RULES = {PLATFORM_RULES!r}
 CURRENT_PLATFORM = None
 
 FILES = {entries!r}
+'''
+    script += DIFF_FUNCTIONS
+    script += MERGE_FUNCTIONS
 
-
-def path_from_rel(path_str: str) -> Path:
-    return Path(path_str)
-
-
-def load_manifest() -> Dict[str, object]:
-    if not MANIFEST_PATH.exists():
-        return {{"version": 1, "files": FILES}}
-    try:
-        return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {{"version": 1, "files": FILES}}
-
-
-def read_text_file(path: Path) -> Optional[str]:
-    try:
-        return path.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):
-        return None
-
-
-def render_text(text: str) -> str:
-    home = Path.home()
-    return text.replace(HOME_POSIX_TOKEN, home.as_posix()).replace(HOME_TOKEN, str(home))
-
+    script += '''
 
 def normalize_platform_name(name: str) -> str:
+    """Normalize platform labels for consistent comparison."""
     lowered = name.strip().lower()
     if lowered == "darwin":
         return "macos"
-    if lowered in {{"windows", "win32"}}:
+    if lowered in {"windows", "win32"}:
         return "windows"
     if lowered == "linux":
         return "linux"
@@ -914,11 +763,13 @@ CURRENT_PLATFORM = normalize_platform_name(platform.system())
 
 
 def format_platform_name(name: str) -> str:
-    labels = {{"macos": "macOS", "windows": "Windows", "linux": "Linux"}}
+    """Format platform name for display."""
+    labels = {"macos": "macOS", "windows": "Windows", "linux": "Linux"}
     return labels.get(name, name)
 
 
 def detect_supported_platforms(entry: Dict[str, object]) -> Optional[List[str]]:
+    """Infer which platforms a config entry supports."""
     stored = entry.get("platforms")
     if isinstance(stored, list) and stored:
         normalized = []
@@ -945,6 +796,7 @@ def detect_supported_platforms(entry: Dict[str, object]) -> Optional[List[str]]:
 def filter_entries_for_current_platform(
     entries: List[Dict[str, object]]
 ) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
+    """Separate entries into supported and unsupported for current platform."""
     supported = []
     skipped = []
     for entry in entries:
@@ -957,6 +809,7 @@ def filter_entries_for_current_platform(
 
 
 def report_filtered_entries(entries: List[Dict[str, object]]) -> None:
+    """Print list of entries filtered out for this platform."""
     if not entries:
         return
 
@@ -964,181 +817,12 @@ def report_filtered_entries(entries: List[Dict[str, object]]) -> None:
     for entry in entries:
         platforms = detect_supported_platforms(entry) or []
         platform_label = ", ".join(format_platform_name(item) for item in platforms)
-        print(f"- {{entry['software']}} (supported: {{platform_label}})")
+        print(f"- {entry['software']} (supported: {platform_label})")
     print()
-
-
-def detect_environment(manifest: Dict[str, object]) -> None:
-    config_roots = [
-        "~/.config",
-        "~/Library/Application Support",
-        "~/AppData/Roaming",
-        "~/AppData/Local",
-        "~/Documents/PowerShell",
-    ]
-    print("Environment detection:")
-    print("- OS: " + platform.system())
-    print("- Home: " + str(Path.home()))
-    print("- Repo: " + str(DOTFILES_DIR))
-    print("- Repo exists: yes")
-    print("- Python configured: " + ("yes" if sys.executable else "no"))
-    print("- Python executable: " + (sys.executable or "not found"))
-    print("- Existing tracked configs: " + str(len(manifest.get("files", []))))
-    print("- Config roots: " + ", ".join(config_roots))
-    print()
-
-
-def prompt_yes_no(message: str, default: bool = False) -> bool:
-    suffix = "[Y/n]" if default else "[y/N]"
-    answer = input(message + " " + suffix + " ").strip().lower()
-    if not answer:
-        return default
-    return answer in {"y", "yes"}
-
-
-def read_text_lines(path: Path) -> Optional[List[str]]:
-    text = read_text_file(path)
-    if text is None:
-        return None
-    return text.splitlines()
-
-
-def summarize_directory(path: Path) -> List[str]:
-    return sorted(
-        str(child.relative_to(path)).replace('\\\\', '/')
-        for child in path.rglob('*')
-        if child.is_file()
-    )
-
-
-def files_equal(src: Path, dest: Path) -> bool:
-    src_lines = read_text_lines(src)
-    dest_lines = read_text_lines(dest)
-    if src_lines is None or dest_lines is None:
-        return src.read_bytes() == dest.read_bytes()
-    return src_lines == dest_lines
-
-
-def directories_equal(src: Path, dest: Path) -> bool:
-    src_entries = summarize_directory(src)
-    dest_entries = summarize_directory(dest)
-    if src_entries != dest_entries:
-        return False
-    return all(files_equal(src / rel_path, dest / rel_path) for rel_path in src_entries)
-
-
-def entries_equal(src: Path, dest: Path, is_dir: bool) -> bool:
-    if not dest.exists():
-        return False
-    if is_dir:
-        return directories_equal(src, dest)
-    return files_equal(src, dest)
-
-
-def diff_file(repo_path: Path, local_path: Path) -> bool:
-    repo_lines = read_text_lines(repo_path)
-    local_lines = read_text_lines(local_path)
-    if repo_lines is None or local_lines is None:
-        same = repo_path.read_bytes() == local_path.read_bytes()
-        if not same:
-            print("Binary or non-UTF8 file differs; review manually before syncing.")
-        return not same
-
-    if repo_lines == local_lines:
-        return False
-
-    for line in difflib.unified_diff(
-        local_lines,
-        repo_lines,
-        fromfile=f"local/{{local_path}}",
-        tofile=f"repo/{{repo_path}}",
-        lineterm="",
-    ):
-        print(line)
-    return True
-
-
-def print_diff(repo_path: Path, local_path: Path, is_dir: bool) -> bool:
-    if is_dir:
-        repo_entries = summarize_directory(repo_path)
-        local_entries = summarize_directory(local_path)
-        differs = False
-        if repo_entries != local_entries:
-            differs = True
-            print("Directory file list differs:")
-            for line in difflib.unified_diff(
-                local_entries,
-                repo_entries,
-                fromfile=f"local/{{local_path}}",
-                tofile=f"repo/{{repo_path}}",
-                lineterm="",
-            ):
-                print(line)
-
-        for rel_path in sorted(set(repo_entries) & set(local_entries)):
-            repo_file = repo_path / rel_path
-            local_file = local_path / rel_path
-            if files_equal(repo_file, local_file):
-                continue
-            differs = True
-            print()
-            print(f"Diff for {{rel_path}}:")
-            diff_file(repo_file, local_file)
-
-        return differs
-
-    print("File contents differ:")
-    return diff_file(repo_path, local_path)
-
-
-def save_merge_note(entry: Dict[str, object], note: str) -> Path:
-    MERGE_NOTES_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    note_path = MERGE_NOTES_DIR / f"{{timestamp}}-restore-{{entry['software'].lower().replace(' ', '-')}}.md"
-    note_path.write_text(
-        "\\n".join(
-            [
-                f"# Restore merge note for {{entry['software']}}",
-                f"- Repo path: `{{DOTFILES_DIR / path_from_rel(entry['repo_rel'])}}`",
-                f"- Local path: `{{Path.home() / path_from_rel(entry['home_rel'])}}`",
-                "",
-                "## User instructions",
-                note.strip() or "(none)",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    print(f"Saved merge note to {{note_path}}")
-    return note_path
-
-
-def append_pending_merge(entry: Dict[str, object], note_path: Optional[Path], reason: str) -> None:
-    MERGE_NOTES_DIR.mkdir(parents=True, exist_ok=True)
-    if PENDING_MERGES_PATH.exists():
-        try:
-            payload = json.loads(PENDING_MERGES_PATH.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            payload = {{"items": []}}
-    else:
-        payload = {{"items": []}}
-
-    payload.setdefault("items", []).append(
-        {{
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "software": entry["software"],
-            "direction": "repo_to_local",
-            "local_path": str(Path.home() / path_from_rel(entry["home_rel"])),
-            "repo_path": str(DOTFILES_DIR / path_from_rel(entry["repo_rel"])),
-            "reason": reason,
-            "merge_note": str(note_path) if note_path else None,
-        }}
-    )
-    PENDING_MERGES_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    print(f"Recorded pending merge in {{PENDING_MERGES_PATH}}")
 
 
 def copy_entry(src: Path, dest: Path, is_dir: bool) -> None:
+    """Copy repo config to local with placeholder rendering."""
     if is_dir:
         if dest.exists():
             shutil.rmtree(dest)
@@ -1158,37 +842,8 @@ def copy_entry(src: Path, dest: Path, is_dir: bool) -> None:
             dest.write_text(render_text(text), encoding="utf-8")
 
 
-def prompt_merge_instructions(entry: Dict[str, object]) -> Optional[Path]:
-    print("Describe how the repo version should be merged into the local version.")
-    print("Press Enter on an empty line to finish. Leave blank to skip.")
-    lines = []
-    while True:
-        line = input("> ")
-        if not line:
-            break
-        lines.append(line)
-    if lines:
-        return save_merge_note(entry, "\\n".join(lines))
-    return None
-
-
-def choose_conflict_action() -> str:
-    print("Choose what to do with this sync conflict:")
-    print("  1. overwrite - replace the local version with the repo version")
-    print("  2. skip - keep the local version unchanged for now")
-    print("  3. manual - leave both as-is and resolve manually later")
-    while True:
-        answer = input("Select [1/2/3]: ").strip().lower()
-        if answer in {{"1", "overwrite", "o"}}:
-            return "overwrite"
-        if answer in {{"2", "skip", "s"}}:
-            return "skip"
-        if answer in {{"3", "manual", "m", "manual-merge"}}:
-            return "manual"
-        print("Please enter 1, 2, or 3.")
-
-
 def choose_entries(entries: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    """Prompt user to select which configs to restore."""
     print("Scan results: repo backup + local environment")
     print("Confirm each numbered software entry individually before syncing to local.")
     chosen = []
@@ -1196,11 +851,11 @@ def choose_entries(entries: List[Dict[str, object]]) -> List[Dict[str, object]]:
         repo_path = DOTFILES_DIR / path_from_rel(entry["repo_rel"])
         local_path = Path.home() / path_from_rel(entry["home_rel"])
         local_exists = local_path.exists() or local_path.is_symlink()
-        print(f"{{index}}. {{entry['software']}}")
-        print(f"   repo:   {{repo_path}}")
-        print(f"   local:  {{local_path}}")
-        print(f"   repo backup exists: {{'yes' if repo_path.exists() or repo_path.is_symlink() else 'no'}}")
-        print(f"   local config exists: {{'yes' if local_exists else 'no'}}")
+        print(f"{index}. {entry['software']}")
+        print(f"   repo:   {repo_path}")
+        print(f"   local:  {local_path}")
+        print(f"   repo backup exists: {'yes' if repo_path.exists() or repo_path.is_symlink() else 'no'}")
+        print(f"   local config exists: {'yes' if local_exists else 'no'}")
         print("   selection: confirm this software individually")
         if prompt_yes_no("   Sync this software from repo to local?"):
             chosen.append(entry)
@@ -1209,7 +864,7 @@ def choose_entries(entries: List[Dict[str, object]]) -> List[Dict[str, object]]:
     if chosen:
         print("Selected software for repo-to-local sync:")
         for index, entry in enumerate(chosen, start=1):
-            print(f"  {{index}}. {{entry['software']}}")
+            print(f"  {index}. {entry['software']}")
     else:
         print("Selected software: none")
     return chosen
@@ -1217,7 +872,7 @@ def choose_entries(entries: List[Dict[str, object]]) -> List[Dict[str, object]]:
 
 def main() -> None:
     print("Syncing configs from repo to local machine...")
-    print(f"Repository: {{DOTFILES_DIR}}")
+    print(f"Repository: {DOTFILES_DIR}")
     print()
 
     manifest = load_manifest()
@@ -1234,20 +889,20 @@ def main() -> None:
             print("No configs selected. Nothing to sync.")
         return
 
-    summary = {{
+    summary = {
         "synced": [],
         "unchanged": [],
         "skipped": [],
         "manual": [],
         "missing_in_repo": [],
-    }}
+    }
 
     for entry in selected_entries:
         repo_path = DOTFILES_DIR / path_from_rel(entry["repo_rel"])
         local_path = Path.home() / path_from_rel(entry["home_rel"])
 
         if not repo_path.exists():
-            print(f"Warning: {{repo_path}} not found in repo, skipping")
+            print(f"Warning: {repo_path} not found in repo, skipping")
             summary["missing_in_repo"].append(entry["software"])
             continue
 
@@ -1255,41 +910,41 @@ def main() -> None:
 
         if local_path.exists():
             print()
-            print(f"Reviewing {{entry['software']}}")
-            print(f"- Repo:   {{repo_path}}")
-            print(f"- Local:  {{local_path}}")
+            print(f"Reviewing {entry['software']}")
+            print(f"- Repo:   {repo_path}")
+            print(f"- Local:  {local_path}")
             if entries_equal(repo_path, local_path, entry["is_dir"]):
                 print("No differences detected. Local config already matches the repo backup.")
                 summary["unchanged"].append(entry["software"])
                 continue
 
             note_path = None
-            if print_diff(repo_path, local_path, entry["is_dir"]):
-                note_path = prompt_merge_instructions(entry)
-                action = choose_conflict_action()
+            if print_diff(repo_path, local_path, entry["is_dir"], "repo", "local"):
+                note_path = prompt_merge_instructions(entry, "restore")
+                action = choose_conflict_action("restore")
                 if action == "skip":
-                    print(f"Skipped {{entry['software']}}")
+                    print(f"Skipped {entry['software']}")
                     summary["skipped"].append(entry["software"])
                     continue
                 if action == "manual":
-                    append_pending_merge(entry, note_path, "manual repo-to-local merge requested")
-                    print(f"Left {{entry['software']}} unchanged for manual merge later")
+                    append_pending_merge(entry, note_path, "manual repo-to-local merge requested", "restore")
+                    print(f"Left {entry['software']} unchanged for manual merge later")
                     summary["manual"].append(entry["software"])
                     continue
 
         copy_entry(repo_path, local_path, entry["is_dir"])
-        print(f"Synced {{entry['repo_rel']}} -> {{local_path}}")
+        print(f"Synced {entry['repo_rel']} -> {local_path}")
         summary["synced"].append(entry["software"])
 
     print()
     print("Repo-to-local sync complete!")
-    print(f"- Synced: {{len(summary['synced'])}}")
-    print(f"- Unchanged: {{len(summary['unchanged'])}}")
-    print(f"- Skipped: {{len(summary['skipped'])}}")
-    print(f"- Manual merge later: {{len(summary['manual'])}}")
-    print(f"- Missing in repo: {{len(summary['missing_in_repo'])}}")
+    print(f"- Synced: {len(summary['synced'])}")
+    print(f"- Unchanged: {len(summary['unchanged'])}")
+    print(f"- Skipped: {len(summary['skipped'])}")
+    print(f"- Manual merge later: {len(summary['manual'])}")
+    print(f"- Missing in repo: {len(summary['missing_in_repo'])}")
     if summary["manual"]:
-        print(f"Pending manual merges recorded in: {{PENDING_MERGES_PATH}}")
+        print(f"Pending manual merges recorded in: {PENDING_MERGES_PATH}")
 
 
 if __name__ == "__main__":
@@ -1298,9 +953,9 @@ if __name__ == "__main__":
     scripts_dir = dotfiles_dir / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     script_path = scripts_dir / "restore.py"
-    script_path.write_text(script)
+    script_path.write_text(script, encoding="utf-8")
     script_path.chmod(0o755)
-    print(f"Generated scripts/restore.py")
+    print("Generated scripts/restore.py")
 
 
 def generate_sync(dotfiles_dir: Path) -> None:
@@ -1400,9 +1055,9 @@ if __name__ == "__main__":
     scripts_dir = dotfiles_dir / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     script_path = scripts_dir / "sync.py"
-    script_path.write_text(script)
+    script_path.write_text(script, encoding="utf-8")
     script_path.chmod(0o755)
-    print(f"Generated scripts/sync.py")
+    print("Generated scripts/sync.py")
 
 
 def generate_readme(dotfiles_dir: Path, files: List[str]) -> None:
@@ -1459,8 +1114,8 @@ git push -u origin main
 ```
 """
     readme_path = dotfiles_dir / "README.md"
-    readme_path.write_text(readme)
-    print(f"Generated README.md")
+    readme_path.write_text(readme, encoding="utf-8")
+    print("Generated README.md")
 
 
 def main() -> None:
@@ -1477,8 +1132,14 @@ def main() -> None:
         default=str(DEFAULT_REPO_DIR),
         help="Target directory for the dotfiles repo (default: ~/.synconf)",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose logging",
+    )
 
     args = parser.parse_args()
+    setup_logging(args.verbose)
     dotfiles_dir = Path(args.repo_dir).expanduser().resolve()
 
     ensure_repo_dir(dotfiles_dir)
@@ -1493,6 +1154,7 @@ def main() -> None:
         "editor",
         "terminal",
         "dev",
+        "prompt",
         "scripts",
         "other",
         "merge-notes",
