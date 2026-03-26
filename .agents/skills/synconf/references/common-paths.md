@@ -83,6 +83,12 @@ Reference list of common software configuration file locations by platform.
 - Prefer copy-based local restore/install flows so behavior stays consistent even when symlinks are unavailable or undesirable.
 - Prefer PowerShell-friendly commands in docs when the user is clearly on Windows, for example `py -3 install.py` and `winget export`.
 
+## Cross-Platform Restore Notes
+
+- During restore, filter out repo backups whose paths are clearly platform-specific for another OS before asking for per-software confirmation.
+- Typical examples: `AppData/...` and PowerShell profile backups are Windows-only; `Library/Application Support/...` paths are macOS-only; Linux editor and terminal configs usually live under `~/.config/...`.
+- Keep platform-agnostic files such as `~/.gitconfig`, `~/.editorconfig`, `~/.config/nvim/`, `~/.config/wezterm/`, and `~/.config/kitty/` eligible on every platform where the target path is valid.
+
 ## Package Managers (macOS)
 
 | Software | Path |

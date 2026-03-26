@@ -138,6 +138,18 @@
       "prompt": "开始执行前先检查当前用户有没有配置好 python 环境，至少告诉我 python 能不能用、解释器路径是什么，再继续 synconf。",
       "expected_output": "The environment detection step checks whether Python is available for the current user and reports Python availability plus interpreter path before continuing the sync workflow.",
       "files": []
+    },
+    {
+      "id": 24,
+      "prompt": "我把一份同时包含 Windows Terminal 和 zed 备份的 ~/.synconf 拿到 macOS 上恢复时，先过滤掉当前系统不支持的备份文件，只让我确认这台机器能用的那些配置。",
+      "expected_output": "The restore workflow filters out repo backups that do not support the current platform before per-software confirmation and reports which entries were skipped as incompatible.",
+      "files": []
+    },
+    {
+      "id": 25,
+      "prompt": "我这个 ~/.synconf 是旧版本生成的，manifest 里还没有平台字段；恢复到 Linux 时也要根据路径自动识别，把 Windows 的 AppData 和 macOS 的 Application Support 备份过滤掉。",
+      "expected_output": "The restore workflow remains backward compatible with older repos by inferring platform compatibility from backup paths when manifest platform metadata is missing, and filters unsupported Windows/macOS entries before confirmation on Linux.",
+      "files": []
     }
   ]
 }

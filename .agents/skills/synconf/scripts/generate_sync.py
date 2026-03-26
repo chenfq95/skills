@@ -64,6 +64,7 @@ class FileMapping:
     repo_rel: str
     home_rel: str
     is_dir: bool
+    platforms: Optional[List[str]] = None
 
 
 def write_manifest(dotfiles_dir: Path, mappings: List[FileMapping]) -> None:
@@ -142,6 +143,64 @@ SOFTWARE_RULES = [
 ]
 
 
+PLATFORM_RULES = [
+    ("appdata/roaming/code/user", ["windows"]),
+    ("appdata/roaming/cursor/user", ["windows"]),
+    ("appdata/roaming/zed", ["windows"]),
+    ("appdata/roaming/sublime text/packages/user", ["windows"]),
+    ("appdata/roaming/ghostty", ["windows"]),
+    ("appdata/roaming/npm/npmrc", ["windows"]),
+    ("appdata/local/microsoft/windows terminal", ["windows"]),
+    ("documents/windowspowershell/", ["windows"]),
+    ("documents/powershell/microsoft.powershell_profile.ps1", ["windows"]),
+    ("documents/powershell/microsoft.vscode_profile.ps1", ["windows"]),
+    ("microsoft/windows terminal", ["windows"]),
+    ("/pip/pip.ini", ["windows"]),
+    ("library/application support/code/user", ["macos"]),
+    ("library/application support/cursor/user", ["macos"]),
+    ("library/application support/zed", ["macos"]),
+    ("library/application support/sublime text/packages/user", ["macos"]),
+    ("library/application support/com.mitchellh.ghostty", ["macos"]),
+    ("library/application support/iterm2", ["macos"]),
+    ("library/application support/pypoetry", ["macos"]),
+    ("/brewfile", ["macos"]),
+    (".config/code/user", ["linux"]),
+    (".config/cursor/user", ["linux"]),
+    (".config/zed", ["linux"]),
+    (".config/sublime-text/packages/user", ["linux"]),
+    (".config/ghostty", ["linux"]),
+    (".config/pypoetry", ["linux"]),
+    ("appdata/", ["windows"]),
+    ("library/application support/", ["macos"]),
+]
+
+
+def normalize_platform_name(name: str) -> str:
+    """Normalize platform labels for manifest metadata and generated scripts."""
+    lowered = name.strip().lower()
+    if lowered == "darwin":
+        return "macos"
+    if lowered in {"windows", "win32"}:
+        return "windows"
+    if lowered == "linux":
+        return "linux"
+    return lowered
+
+
+def detect_supported_platforms(path: Path, software: str) -> Optional[List[str]]:
+    """Infer whether a config path is intended for a specific platform."""
+    combined = " ".join(
+        [
+            path.as_posix().replace("\\\\", "/").lower(),
+            software.strip().lower(),
+        ]
+    )
+    for pattern, platforms in PLATFORM_RULES:
+        if pattern in combined:
+            return [normalize_platform_name(item) for item in platforms]
+    return None
+
+
 def categorize_file(path: Path) -> str:
     """Determine the category for a config file."""
     text = path.as_posix().lower()
@@ -217,6 +276,7 @@ def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
             continue
 
         category = categorize_file(src)
+        software = infer_software(src)
         repo_rel = repo_relative_path(src, category)
         dest = dotfiles_dir / repo_rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -231,11 +291,12 @@ def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
         mappings.append(
             FileMapping(
                 source=str(src),
-                software=infer_software(src),
+                software=software,
                 category=category,
                 repo_rel=repo_rel.as_posix(),
                 home_rel=relative_to_home(src).as_posix(),
                 is_dir=src.is_dir(),
+                platforms=detect_supported_platforms(src, software),
             )
         )
         print(f"Copied {src} -> {repo_rel.as_posix()}")
@@ -583,7 +644,7 @@ def save_merge_note(entry: Dict[str, object], note: str) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     note_path = MERGE_NOTES_DIR / f"{{timestamp}}-{{entry['software'].lower().replace(' ', '-')}}.md"
     note_path.write_text(
-        "\n".join(
+        "\\n".join(
             [
                 f"# Merge note for {{entry['software']}}",
                 f"- Local path: `{{Path.home() / path_from_rel(entry['home_rel'])}}`",
@@ -606,19 +667,19 @@ def append_pending_merge(entry: Dict[str, object], note_path: Optional[Path], re
         try:
             payload = json.loads(PENDING_MERGES_PATH.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            payload = {"items": []}
+            payload = {{"items": []}}
     else:
-        payload = {"items": []}
+        payload = {{"items": []}}
 
     payload.setdefault("items", []).append(
-        {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        {{
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
             "software": entry["software"],
             "local_path": str(Path.home() / path_from_rel(entry["home_rel"])),
             "repo_path": str(DOTFILES_DIR / path_from_rel(entry["repo_rel"])),
             "reason": reason,
             "merge_note": str(note_path) if note_path else None,
-        }
+        }}
     )
     PENDING_MERGES_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"Recorded pending merge in {{PENDING_MERGES_PATH}}")
@@ -654,7 +715,7 @@ def prompt_merge_instructions(entry: Dict[str, object]) -> Optional[Path]:
             break
         lines.append(line)
     if lines:
-        return save_merge_note(entry, "\n".join(lines))
+        return save_merge_note(entry, "\\n".join(lines))
     return None
 
 
@@ -712,13 +773,13 @@ def main() -> None:
         print("No configs selected. Nothing to back up.")
         return
 
-    summary = {
+    summary = {{
         "backed_up": [],
         "unchanged": [],
         "skipped": [],
         "manual": [],
         "missing": [],
-    }
+    }}
 
     for entry in selected_entries:
         src = Path.home() / path_from_rel(entry["home_rel"])
@@ -798,13 +859,17 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 DOTFILES_DIR = Path(__file__).resolve().parent.parent
 MERGE_NOTES_DIR = DOTFILES_DIR / "merge-notes"
 PENDING_MERGES_PATH = MERGE_NOTES_DIR / "pending-merges.json"
 MANIFEST_PATH = DOTFILES_DIR / "manifest.json"
+HOME_TOKEN = "__SYNCONF_HOME__"
+HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
+PLATFORM_RULES = {PLATFORM_RULES!r}
+CURRENT_PLATFORM = None
 
 FILES = {entries!r}
 
@@ -832,6 +897,75 @@ def read_text_file(path: Path) -> Optional[str]:
 def render_text(text: str) -> str:
     home = Path.home()
     return text.replace(HOME_POSIX_TOKEN, home.as_posix()).replace(HOME_TOKEN, str(home))
+
+
+def normalize_platform_name(name: str) -> str:
+    lowered = name.strip().lower()
+    if lowered == "darwin":
+        return "macos"
+    if lowered in {{"windows", "win32"}}:
+        return "windows"
+    if lowered == "linux":
+        return "linux"
+    return lowered or "unknown"
+
+
+CURRENT_PLATFORM = normalize_platform_name(platform.system())
+
+
+def format_platform_name(name: str) -> str:
+    labels = {{"macos": "macOS", "windows": "Windows", "linux": "Linux"}}
+    return labels.get(name, name)
+
+
+def detect_supported_platforms(entry: Dict[str, object]) -> Optional[List[str]]:
+    stored = entry.get("platforms")
+    if isinstance(stored, list) and stored:
+        normalized = []
+        for item in stored:
+            platform_name = normalize_platform_name(str(item))
+            if platform_name not in normalized:
+                normalized.append(platform_name)
+        if normalized:
+            return normalized
+
+    combined = " ".join(
+        [
+            str(entry.get("home_rel", "")).replace("\\\\", "/").lower(),
+            str(entry.get("repo_rel", "")).replace("\\\\", "/").lower(),
+            str(entry.get("software", "")).strip().lower(),
+        ]
+    )
+    for pattern, platforms in PLATFORM_RULES:
+        if pattern in combined:
+            return [normalize_platform_name(item) for item in platforms]
+    return None
+
+
+def filter_entries_for_current_platform(
+    entries: List[Dict[str, object]]
+) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
+    supported = []
+    skipped = []
+    for entry in entries:
+        platforms = detect_supported_platforms(entry)
+        if platforms and CURRENT_PLATFORM not in platforms:
+            skipped.append(entry)
+            continue
+        supported.append(entry)
+    return supported, skipped
+
+
+def report_filtered_entries(entries: List[Dict[str, object]]) -> None:
+    if not entries:
+        return
+
+    print("Skipping repo backups that do not support this platform:")
+    for entry in entries:
+        platforms = detect_supported_platforms(entry) or []
+        platform_label = ", ".join(format_platform_name(item) for item in platforms)
+        print(f"- {{entry['software']}} (supported: {{platform_label}})")
+    print()
 
 
 def detect_environment(manifest: Dict[str, object]) -> None:
@@ -962,7 +1096,7 @@ def save_merge_note(entry: Dict[str, object], note: str) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     note_path = MERGE_NOTES_DIR / f"{{timestamp}}-restore-{{entry['software'].lower().replace(' ', '-')}}.md"
     note_path.write_text(
-        "\n".join(
+        "\\n".join(
             [
                 f"# Restore merge note for {{entry['software']}}",
                 f"- Repo path: `{{DOTFILES_DIR / path_from_rel(entry['repo_rel'])}}`",
@@ -1034,7 +1168,7 @@ def prompt_merge_instructions(entry: Dict[str, object]) -> Optional[Path]:
             break
         lines.append(line)
     if lines:
-        return save_merge_note(entry, "\n".join(lines))
+        return save_merge_note(entry, "\\n".join(lines))
     return None
 
 
@@ -1088,9 +1222,16 @@ def main() -> None:
 
     manifest = load_manifest()
     detect_environment(manifest)
-    selected_entries = choose_entries(manifest.get("files", FILES))
+    supported_entries, filtered_entries = filter_entries_for_current_platform(
+        manifest.get("files", FILES)
+    )
+    report_filtered_entries(filtered_entries)
+    selected_entries = choose_entries(supported_entries)
     if not selected_entries:
-        print("No configs selected. Nothing to sync.")
+        if not supported_entries:
+            print("No compatible repo backups are available for this platform.")
+        else:
+            print("No configs selected. Nothing to sync.")
         return
 
     summary = {{
@@ -1149,6 +1290,10 @@ def main() -> None:
     print(f"- Missing in repo: {{len(summary['missing_in_repo'])}}")
     if summary["manual"]:
         print(f"Pending manual merges recorded in: {{PENDING_MERGES_PATH}}")
+
+
+if __name__ == "__main__":
+    main()
 '''
     scripts_dir = dotfiles_dir / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
@@ -1299,6 +1444,8 @@ On Windows, run `py -3 install.py` from PowerShell.
 Tracked software inventory is persisted in `manifest.json` so later runs can add configs incrementally without rebuilding the repo.
 
 Backup and restore scripts begin by printing environment detection details, including Python availability and tracked manifest count.
+
+Restore automatically filters out backups that only target other platforms before asking for per-software confirmation.
 
 Manual merge follow-ups are tracked in `merge-notes/pending-merges.json`.
 

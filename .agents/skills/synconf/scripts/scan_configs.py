@@ -75,6 +75,7 @@ CATEGORY_RULES = [
 
 SOFTWARE_RULES = [
     ("microsoft.powershell_profile.ps1", "PowerShell"),
+    ("microsoft.vscode_profile.ps1", "PowerShell"),
     ("windows terminal", "Windows Terminal"),
     ("code/user", "VS Code"),
     ("cursor/user", "Cursor"),
@@ -275,7 +276,11 @@ def add_platform_specific(registry: Dict[str, List[Tuple[str, str]]]) -> None:
     """Add OS-specific config paths."""
     if IS_MACOS:
         registry["Editor"].append(("dir", "~/Library/Application Support/Code/User"))
+        registry["Editor"].append(("dir", "~/Library/Application Support/Cursor/User"))
         registry["Editor"].append(("dir", "~/Library/Application Support/Zed"))
+        registry["Editor"].append(
+            ("dir", "~/Library/Application Support/Sublime Text/Packages/User")
+        )
         registry["Terminal"].append(
             ("dir", "~/Library/Application Support/com.mitchellh.ghostty")
         )
@@ -306,6 +311,7 @@ def add_platform_specific(registry: Dict[str, List[Tuple[str, str]]]) -> None:
         )
     else:
         registry["Editor"].append(("dir", "~/.config/Code/User"))
+        registry["Editor"].append(("dir", "~/.config/Cursor/User"))
         registry["Editor"].append(("dir", "~/.config/zed"))
         registry["Editor"].append(("dir", "~/.config/sublime-text/Packages/User"))
         registry["Terminal"].append(("dir", "~/.config/ghostty"))

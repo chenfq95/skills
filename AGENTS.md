@@ -1,14 +1,14 @@
 # AGENTS.md
 
 This repository is for developing, debugging, and storing personal agent skills.
-Most code today lives under `.agents/skills/synconf-skill/` and is plain Python 3.
+Most code today lives under `.agents/skills/synconf/` and is plain Python 3.
 
 ## Repo Snapshot
 
 - Primary assets: skill docs, Python helper scripts, references, and eval fixtures.
 - Main Python sources:
-  - `.agents/skills/synconf-skill/scripts/scan_configs.py`
-  - `.agents/skills/synconf-skill/scripts/generate_sync.py`
+  - `.agents/skills/synconf/scripts/scan_configs.py`
+  - `.agents/skills/synconf/scripts/generate_sync.py`
 - There is currently no `package.json`, `pyproject.toml`, `pytest.ini`, `tox.ini`, or `Makefile`.
 - There is currently no checked-in formal test suite.
 - No Cursor rules were found in `.cursor/rules/` or `.cursorrules`.
@@ -28,37 +28,42 @@ There is no dedicated build pipeline right now. For this repo, "build/test" most
 ### Core validation commands
 
 - Syntax-check all current Python scripts:
-  - `python3 -m py_compile .agents/skills/synconf-skill/scripts/scan_configs.py .agents/skills/synconf-skill/scripts/generate_sync.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/scan_configs.py .agents/skills/synconf/scripts/generate_sync.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/check_platform_filtering.py`
 - Smoke-check CLI help for the scanner:
-  - `python3 .agents/skills/synconf-skill/scripts/scan_configs.py --help`
+  - `python3 .agents/skills/synconf/scripts/scan_configs.py --help`
 - Smoke-check CLI help for the generator:
-  - `python3 .agents/skills/synconf-skill/scripts/generate_sync.py --help`
+  - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
+- Validate generated restore platform filtering:
+  - `python3 .agents/skills/synconf/scripts/check_platform_filtering.py`
 
 ### Run the main scripts
 
 - Scan configs in human-readable mode:
-  - `python3 .agents/skills/synconf-skill/scripts/scan_configs.py`
+  - `python3 .agents/skills/synconf/scripts/scan_configs.py`
 - Scan configs in JSON mode:
-  - `python3 .agents/skills/synconf-skill/scripts/scan_configs.py --json`
+  - `python3 .agents/skills/synconf/scripts/scan_configs.py --json`
 - Show generator usage:
-  - `python3 .agents/skills/synconf-skill/scripts/generate_sync.py --help`
+  - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
 - Generate a sync repo for selected paths:
-  - `python3 .agents/skills/synconf-skill/scripts/generate_sync.py ~/.zshrc ~/.gitconfig`
+  - `python3 .agents/skills/synconf/scripts/generate_sync.py ~/.zshrc ~/.gitconfig`
 - Generate into a custom repo directory:
-  - `python3 .agents/skills/synconf-skill/scripts/generate_sync.py --repo-dir ~/dotfiles ~/.zshrc`
+  - `python3 .agents/skills/synconf/scripts/generate_sync.py --repo-dir ~/dotfiles ~/.zshrc`
 
 ### "Single test" equivalents
 
 Because there is no formal unit test runner yet, use one of these targeted checks as the closest equivalent to a single test:
 
 - Syntax-check one file:
-  - `python3 -m py_compile .agents/skills/synconf-skill/scripts/scan_configs.py`
-  - `python3 -m py_compile .agents/skills/synconf-skill/scripts/generate_sync.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/scan_configs.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/generate_sync.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/check_platform_filtering.py`
 - Smoke-check one script's CLI contract:
-  - `python3 .agents/skills/synconf-skill/scripts/scan_configs.py --help`
-  - `python3 .agents/skills/synconf-skill/scripts/generate_sync.py --help`
+  - `python3 .agents/skills/synconf/scripts/scan_configs.py --help`
+  - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
 - Run one narrow behavior manually:
-  - `python3 .agents/skills/synconf-skill/scripts/scan_configs.py --json`
+  - `python3 .agents/skills/synconf/scripts/scan_configs.py --json`
+  - `python3 .agents/skills/synconf/scripts/check_platform_filtering.py`
 
 ### If you add tests later
 

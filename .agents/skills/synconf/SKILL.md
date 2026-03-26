@@ -98,6 +98,8 @@ Support repo-to-local sync with the same interaction quality as backup.
 - Ask for per-software confirmation before restoring
 - Use copy-based writes only
 - Render `__SYNCONF_HOME__` and `__SYNCONF_HOME_POSIX__` placeholders to the current machine's home path
+- Filter out repo backups that are not supported on the current platform before per-software restore confirmation
+- Infer compatibility from tracked platform metadata when available, and fall back to path-based detection for older repos
 - Show diffs before overwriting differing local configs
 - Offer overwrite, skip, and manual merge later
 - Skip items that already match
@@ -171,7 +173,7 @@ If the repo already exists and `manifest.json` is present, use the generator inc
 
 - `install.py`: copy repo configs into local paths; back up existing local files into `~/.synconf-backup/<timestamp>/...`
 - `backup.py`: interactive local-to-repo sync with diffs, merge notes, and incremental manifest-aware behavior
-- `restore.py`: interactive repo-to-local sync with diffs, merge notes, and placeholder rendering
+- `restore.py`: interactive repo-to-local sync with platform-aware filtering, diffs, merge notes, and placeholder rendering
 - `sync.py`: repeated interactive rounds combining backup, optional restore, and Git sync
 
 ## Supported Software Examples
