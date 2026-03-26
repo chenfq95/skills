@@ -1,0 +1,258 @@
+{
+  "version": 1,
+  "description": "SynConf configuration: path mappings, category rules, software rules, and platform rules",
+  "category_rules": {
+    "description": "Patterns to infer category from path (first match wins)",
+    "rules": [
+      {"pattern": ".zsh", "category": "shell"},
+      {"pattern": ".bash", "category": "shell"},
+      {"pattern": ".profile", "category": "shell"},
+      {"pattern": ".zprofile", "category": "shell"},
+      {"pattern": "powershell", "category": "shell"},
+      {"pattern": "Microsoft.PowerShell_profile.ps1", "category": "shell"},
+      {"pattern": "Microsoft.VSCode_profile.ps1", "category": "shell"},
+      {"pattern": "fish/config.fish", "category": "shell"},
+      {"pattern": ".config/fish", "category": "shell"},
+      {"pattern": ".gitconfig", "category": "git"},
+      {"pattern": ".gitignore", "category": "git"},
+      {"pattern": ".gitmessage", "category": "git"},
+      {"pattern": ".vim", "category": "editor"},
+      {"pattern": "nvim", "category": "editor"},
+      {"pattern": "code/user", "category": "editor"},
+      {"pattern": "cursor/user", "category": "editor"},
+      {"pattern": "/zed", "category": "editor"},
+      {"pattern": "sublime text/packages/user", "category": "editor"},
+      {"pattern": ".editorconfig", "category": "editor"},
+      {"pattern": ".emacs", "category": "editor"},
+      {"pattern": ".tmux", "category": "terminal"},
+      {"pattern": ".inputrc", "category": "terminal"},
+      {"pattern": "alacritty", "category": "terminal"},
+      {"pattern": "ghostty", "category": "terminal"},
+      {"pattern": "kitty", "category": "terminal"},
+      {"pattern": "wezterm", "category": "terminal"},
+      {"pattern": "Windows Terminal", "category": "terminal"},
+      {"pattern": "iterm2", "category": "terminal"},
+      {"pattern": ".npmrc", "category": "dev"},
+      {"pattern": "npmrc", "category": "dev"},
+      {"pattern": ".cargo", "category": "dev"},
+      {"pattern": ".pylintrc", "category": "dev"},
+      {"pattern": ".flake8", "category": "dev"},
+      {"pattern": ".eslintrc", "category": "dev"},
+      {"pattern": ".prettierrc", "category": "dev"},
+      {"pattern": ".rubocop", "category": "dev"},
+      {"pattern": "pip.ini", "category": "dev"},
+      {"pattern": "pip.conf", "category": "dev"},
+      {"pattern": "pypoetry", "category": "dev"},
+      {"pattern": "starship", "category": "prompt"},
+      {"pattern": "oh-my-zsh", "category": "prompt"},
+      {"pattern": "powerlevel10k", "category": "prompt"}
+    ]
+  },
+  "software_rules": {
+    "description": "Patterns to infer software name from path (first match wins)",
+    "rules": [
+      {"pattern": "microsoft.powershell_profile.ps1", "software": "PowerShell"},
+      {"pattern": "microsoft.vscode_profile.ps1", "software": "PowerShell"},
+      {"pattern": "fish/config.fish", "software": "Fish"},
+      {"pattern": ".config/fish", "software": "Fish"},
+      {"pattern": ".zsh", "software": "Zsh"},
+      {"pattern": ".bash", "software": "Bash"},
+      {"pattern": ".profile", "software": "Shell"},
+      {"pattern": "windows terminal", "software": "Windows Terminal"},
+      {"pattern": "iterm2", "software": "iTerm2"},
+      {"pattern": ".tmux", "software": "Tmux"},
+      {"pattern": "alacritty", "software": "Alacritty"},
+      {"pattern": "ghostty", "software": "Ghostty"},
+      {"pattern": "kitty", "software": "Kitty"},
+      {"pattern": "wezterm", "software": "WezTerm"},
+      {"pattern": ".inputrc", "software": "Readline"},
+      {"pattern": "code/user", "software": "VS Code"},
+      {"pattern": "cursor/user", "software": "Cursor"},
+      {"pattern": "/zed", "software": "Zed"},
+      {"pattern": "sublime text/packages/user", "software": "Sublime Text"},
+      {"pattern": "nvim", "software": "Neovim"},
+      {"pattern": ".vim", "software": "Vim"},
+      {"pattern": ".emacs", "software": "Emacs"},
+      {"pattern": ".editorconfig", "software": "EditorConfig"},
+      {"pattern": ".gitconfig", "software": "Git"},
+      {"pattern": ".gitignore", "software": "Git"},
+      {"pattern": ".gitmessage", "software": "Git"},
+      {"pattern": "starship", "software": "Starship"},
+      {"pattern": "oh-my-zsh", "software": "Oh My Zsh"},
+      {"pattern": "powerlevel10k", "software": "Powerlevel10k"},
+      {"pattern": "npmrc", "software": "npm"},
+      {"pattern": "pip.ini", "software": "pip"},
+      {"pattern": "pip.conf", "software": "pip"},
+      {"pattern": "pypoetry", "software": "Poetry"},
+      {"pattern": ".cargo", "software": "Cargo"},
+      {"pattern": ".pylintrc", "software": "Pylint"},
+      {"pattern": ".flake8", "software": "Flake8"},
+      {"pattern": ".eslintrc", "software": "ESLint"},
+      {"pattern": ".prettierrc", "software": "Prettier"},
+      {"pattern": ".rubocop", "software": "RuboCop"}
+    ]
+  },
+  "platform_rules": {
+    "description": "Path patterns to infer platform compatibility",
+    "rules": [
+      {"pattern": "appdata/roaming/code/user", "platforms": ["windows"]},
+      {"pattern": "appdata/roaming/cursor/user", "platforms": ["windows"]},
+      {"pattern": "appdata/roaming/zed", "platforms": ["windows"]},
+      {"pattern": "appdata/roaming/sublime text/packages/user", "platforms": ["windows"]},
+      {"pattern": "appdata/roaming/ghostty", "platforms": ["windows"]},
+      {"pattern": "appdata/roaming/npm/npmrc", "platforms": ["windows"]},
+      {"pattern": "appdata/local/microsoft/windows terminal", "platforms": ["windows"]},
+      {"pattern": "documents/windowspowershell/", "platforms": ["windows"]},
+      {"pattern": "documents/powershell/microsoft.powershell_profile.ps1", "platforms": ["windows"]},
+      {"pattern": "documents/powershell/microsoft.vscode_profile.ps1", "platforms": ["windows"]},
+      {"pattern": "microsoft/windows terminal", "platforms": ["windows"]},
+      {"pattern": "/pip/pip.ini", "platforms": ["windows"]},
+      {"pattern": "library/application support/code/user", "platforms": ["macos"]},
+      {"pattern": "library/application support/cursor/user", "platforms": ["macos"]},
+      {"pattern": "library/application support/zed", "platforms": ["macos"]},
+      {"pattern": "library/application support/sublime text/packages/user", "platforms": ["macos"]},
+      {"pattern": "library/application support/com.mitchellh.ghostty", "platforms": ["macos"]},
+      {"pattern": "library/application support/iterm2", "platforms": ["macos"]},
+      {"pattern": "library/application support/pypoetry", "platforms": ["macos"]},
+      {"pattern": "/brewfile", "platforms": ["macos"]},
+      {"pattern": ".config/code/user", "platforms": ["linux"]},
+      {"pattern": ".config/cursor/user", "platforms": ["linux"]},
+      {"pattern": ".config/sublime-text/packages/user", "platforms": ["linux"]},
+      {"pattern": "appdata/", "platforms": ["windows"]},
+      {"pattern": "library/application support/", "platforms": ["macos"]}
+    ]
+  },
+  "config_registry": {
+    "description": "Default config paths to scan, organized by category",
+    "categories": {
+      "Shell": [
+        {"type": "file", "path": "~/.zshrc"},
+        {"type": "file", "path": "~/.zprofile"},
+        {"type": "file", "path": "~/.zshenv"},
+        {"type": "file", "path": "~/.bashrc"},
+        {"type": "file", "path": "~/.bash_profile"},
+        {"type": "file", "path": "~/.profile"},
+        {"type": "file", "path": "~/.bash_aliases"},
+        {"type": "file", "path": "~/.zsh_aliases"},
+        {"type": "file", "path": "~/.config/fish/config.fish"},
+        {"type": "dir", "path": "~/.config/fish"}
+      ],
+      "Git": [
+        {"type": "file", "path": "~/.gitconfig"},
+        {"type": "file", "path": "~/.gitignore_global"},
+        {"type": "file", "path": "~/.gitmessage"}
+      ],
+      "Editor": [
+        {"type": "file", "path": "~/.vimrc"},
+        {"type": "dir", "path": "~/.vim"},
+        {"type": "dir", "path": "~/.config/nvim"},
+        {"type": "file", "path": "~/.config/zed/settings.json"},
+        {"type": "file", "path": "~/.emacs"},
+        {"type": "dir", "path": "~/.emacs.d"}
+      ],
+      "Terminal": [
+        {"type": "file", "path": "~/.tmux.conf"},
+        {"type": "dir", "path": "~/.tmux"},
+        {"type": "dir", "path": "~/.config/alacritty"},
+        {"type": "dir", "path": "~/.config/ghostty"},
+        {"type": "dir", "path": "~/.config/kitty"},
+        {"type": "dir", "path": "~/.config/wezterm"},
+        {"type": "file", "path": "~/.inputrc"}
+      ],
+      "Prompt & Theme": [
+        {"type": "file", "path": "~/.config/starship.toml"},
+        {"type": "dir", "path": "~/.oh-my-zsh/custom"},
+        {"type": "dir", "path": "~/.config/powerlevel10k"}
+      ],
+      "Dev Tools": [
+        {"type": "file", "path": "~/.npmrc"},
+        {"type": "file", "path": "~/.yarnrc"},
+        {"type": "file", "path": "~/.cargo/config.toml"},
+        {"type": "file", "path": "~/.cargo/config"},
+        {"type": "file", "path": "~/.pip/pip.conf"},
+        {"type": "file", "path": "~/.pylintrc"},
+        {"type": "file", "path": "~/.flake8"},
+        {"type": "file", "path": "~/.rubocop.yml"},
+        {"type": "file", "path": "~/.eslintrc"},
+        {"type": "file", "path": "~/.prettierrc"},
+        {"type": "file", "path": "~/.editorconfig"}
+      ],
+      "Containers & Cloud": [
+        {"type": "dir", "path": "~/.docker"},
+        {"type": "file", "path": "~/.kube/config"},
+        {"type": "dir", "path": "~/.aws"},
+        {"type": "dir", "path": "~/.config/gcloud"}
+      ],
+      "Package Managers": [
+        {"type": "file", "path": "~/.nvmrc"},
+        {"type": "file", "path": "~/.node-version"},
+        {"type": "file", "path": "~/.python-version"},
+        {"type": "file", "path": "~/.ruby-version"},
+        {"type": "file", "path": "~/.tool-versions"}
+      ],
+      "Other": [
+        {"type": "file", "path": "~/.ssh/config"},
+        {"type": "file", "path": "~/.gnupg/gpg-agent.conf"},
+        {"type": "dir", "path": "~/.config/gh"},
+        {"type": "file", "path": "~/.wgetrc"},
+        {"type": "file", "path": "~/.curlrc"}
+      ]
+    }
+  },
+  "platform_specific_configs": {
+    "description": "OS-specific config paths to add to the registry",
+    "macos": {
+      "Editor": [
+        {"type": "dir", "path": "~/Library/Application Support/Code/User"},
+        {"type": "dir", "path": "~/Library/Application Support/Cursor/User"},
+        {"type": "file", "path": "~/Library/Application Support/Zed/settings.json"},
+        {"type": "dir", "path": "~/Library/Application Support/Sublime Text/Packages/User"}
+      ],
+      "Terminal": [
+        {"type": "dir", "path": "~/Library/Application Support/com.mitchellh.ghostty"},
+        {"type": "dir", "path": "~/Library/Application Support/iTerm2"}
+      ],
+      "Dev Tools": [
+        {"type": "dir", "path": "~/Library/Application Support/pypoetry"}
+      ],
+      "Package Managers": [
+        {"type": "file", "path": "~/Brewfile"}
+      ]
+    },
+    "windows": {
+      "Editor": [
+        {"type": "dir", "path": "~/AppData/Roaming/Code/User"},
+        {"type": "dir", "path": "~/AppData/Roaming/Cursor/User"},
+        {"type": "file", "path": "~/AppData/Roaming/Zed/settings.json"},
+        {"type": "dir", "path": "~/AppData/Roaming/Sublime Text/Packages/User"}
+      ],
+      "Terminal": [
+        {"type": "dir", "path": "~/AppData/Local/Microsoft/Windows Terminal"},
+        {"type": "dir", "path": "~/AppData/Roaming/ghostty"}
+      ],
+      "Dev Tools": [
+        {"type": "file", "path": "~/AppData/Roaming/npm/npmrc"},
+        {"type": "file", "path": "~/pip/pip.ini"}
+      ],
+      "Shell": [
+        {"type": "file", "path": "~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1"},
+        {"type": "file", "path": "~/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1"},
+        {"type": "file", "path": "~/Documents/PowerShell/Microsoft.VSCode_profile.ps1"}
+      ]
+    },
+    "linux": {
+      "Editor": [
+        {"type": "dir", "path": "~/.config/Code/User"},
+        {"type": "dir", "path": "~/.config/Cursor/User"},
+        {"type": "file", "path": "~/.config/zed/settings.json"},
+        {"type": "dir", "path": "~/.config/sublime-text/Packages/User"}
+      ],
+      "Terminal": [
+        {"type": "dir", "path": "~/.config/ghostty"}
+      ],
+      "Dev Tools": [
+        {"type": "dir", "path": "~/.config/pypoetry"}
+      ]
+    }
+  }
+}

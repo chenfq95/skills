@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "software": "Zsh",
+      "source": "/Users/chenfq/.zshrc",
+      "category": "shell",
+      "repo_rel": "shell/.zshrc",
+      "home_rel": ".zshrc",
+      "exists": true,
+      "is_dir": false,
+      "size": "5.1KB",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": ".zprofile",
+      "source": "/Users/chenfq/.zprofile",
+      "category": "shell",
+      "repo_rel": "shell/.zprofile",
+      "home_rel": ".zprofile",
+      "exists": true,
+      "is_dir": false,
+      "size": "89B",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Zsh",
+      "source": "/Users/chenfq/.zshenv",
+      "category": "shell",
+      "repo_rel": "shell/.zshenv",
+      "home_rel": ".zshenv",
+      "exists": true,
+      "is_dir": false,
+      "size": "70B",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Bash",
+      "source": "/Users/chenfq/.bashrc",
+      "category": "shell",
+      "repo_rel": "shell/.bashrc",
+      "home_rel": ".bashrc",
+      "exists": true,
+      "is_dir": false,
+      "size": "293B",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Bash",
+      "source": "/Users/chenfq/.bash_profile",
+      "category": "shell",
+      "repo_rel": "shell/.bash_profile",
+      "home_rel": ".bash_profile",
+      "exists": true,
+      "is_dir": false,
+      "size": "1.4KB",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Shell",
+      "source": "/Users/chenfq/.profile",
+      "category": "shell",
+      "repo_rel": "shell/.profile",
+      "home_rel": ".profile",
+      "exists": true,
+      "is_dir": false,
+      "size": "70B",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Git",
+      "source": "/Users/chenfq/.gitconfig",
+      "category": "git",
+      "repo_rel": "git/.gitconfig",
+      "home_rel": ".gitconfig",
+      "exists": true,
+      "is_dir": false,
+      "size": "52B",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Vim",
+      "source": "/Users/chenfq/.vimrc",
+      "category": "editor",
+      "repo_rel": "editor/.vimrc",
+      "home_rel": ".vimrc",
+      "exists": true,
+      "is_dir": false,
+      "size": "15B",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Zed",
+      "source": "/Users/chenfq/.config/zed",
+      "category": "editor",
+      "repo_rel": "editor/.config/zed",
+      "home_rel": ".config/zed",
+      "exists": true,
+      "is_dir": true,
+      "size": "56.6KB",
+      "file_count": 3,
+      "platforms": null
+    },
+    {
+      "software": "VS Code",
+      "source": "/Users/chenfq/Library/Application Support/Code/User",
+      "category": "editor",
+      "repo_rel": "editor/Library/Application Support/Code/User",
+      "home_rel": "Library/Application Support/Code/User",
+      "exists": true,
+      "is_dir": true,
+      "size": "35.0MB",
+      "file_count": 246,
+      "platforms": [
+        "macos"
+      ]
+    },
+    {
+      "software": "Zed",
+      "source": "/Users/chenfq/Library/Application Support/Zed",
+      "category": "editor",
+      "repo_rel": "editor/Library/Application Support/Zed",
+      "home_rel": "Library/Application Support/Zed",
+      "exists": true,
+      "is_dir": true,
+      "size": "134.6MB",
+      "file_count": 10000,
+      "platforms": [
+        "macos"
+      ]
+    },
+    {
+      "software": "Kitty",
+      "source": "/Users/chenfq/.config/kitty",
+      "category": "terminal",
+      "repo_rel": "terminal/.config/kitty",
+      "home_rel": ".config/kitty",
+      "exists": true,
+      "is_dir": true,
+      "size": "0B",
+      "file_count": 0,
+      "platforms": null
+    },
+    {
+      "software": "Ghostty",
+      "source": "/Users/chenfq/Library/Application Support/com.mitchellh.ghostty",
+      "category": "terminal",
+      "repo_rel": "terminal/Library/Application Support/com.mitchellh.ghostty",
+      "home_rel": "Library/Application Support/com.mitchellh.ghostty",
+      "exists": true,
+      "is_dir": true,
+      "size": "377B",
+      "file_count": 1,
+      "platforms": [
+        "macos"
+      ]
+    },
+    {
+      "software": "Oh My Zsh",
+      "source": "/Users/chenfq/.oh-my-zsh/custom",
+      "category": "prompt",
+      "repo_rel": "prompt/.oh-my-zsh/custom",
+      "home_rel": ".oh-my-zsh/custom",
+      "exists": true,
+      "is_dir": true,
+      "size": "984B",
+      "file_count": 3,
+      "platforms": null
+    },
+    {
+      "software": "npm",
+      "source": "/Users/chenfq/.npmrc",
+      "category": "dev",
+      "repo_rel": "dev/.npmrc",
+      "home_rel": ".npmrc",
+      "exists": true,
+      "is_dir": false,
+      "size": "115B",
+      "file_count": null,
+      "platforms": null
+    },
+    {
+      "software": "Poetry",
+      "source": "/Users/chenfq/Library/Application Support/pypoetry",
+      "category": "dev",
+      "repo_rel": "dev/Library/Application Support/pypoetry",
+      "home_rel": "Library/Application Support/pypoetry",
+      "exists": true,
+      "is_dir": true,
+      "size": "118.2KB",
+      "file_count": 3,
+      "platforms": [
+        "macos"
+      ]
+    },
+    {
+      "software": ".docker",
+      "source": "/Users/chenfq/.docker",
+      "category": "other",
+      "repo_rel": "other/.docker",
+      "home_rel": ".docker",
+      "exists": true,
+      "is_dir": true,
+      "size": "1018.2MB",
+      "file_count": 88,
+      "platforms": null
+    }
+  ]
+}

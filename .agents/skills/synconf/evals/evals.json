@@ -46,7 +46,7 @@
     {
       "id": 8,
       "prompt": "遇到已有备份和本地配置冲突时，不要只问我要不要覆盖，给我明确的选项：覆盖、跳过、或者之后手动合并。",
-      "expected_output": "The conflict workflow presents explicit overwrite, skip, and manual-merge choices after showing diffs and collecting merge guidance.",
+      "expected_output": "After selection and before any backup writes, the conflict workflow presents a numbered conflict summary, asks for an upfront default strategy such as overwrite-all, skip-all, manual-all, or review-each, and still supports per-conflict handling when needed.",
       "files": []
     },
     {
@@ -70,7 +70,13 @@
     {
       "id": 12,
       "prompt": "我选完要备份的软件后，正式开始备份前先把这次选中的软件用编号再总结一遍，确认没有选错。",
-      "expected_output": "After per-software selection, the backup flow shows a numbered summary of the chosen software before processing diffs and backup actions.",
+      "expected_output": "After per-software selection, the backup flow shows a numbered summary of the chosen software, then performs conflict preflight on that selected subset before any backup writes begin.",
+      "files": []
+    },
+    {
+      "id": 32,
+      "prompt": "我选完这批配置后，如果其中有几个和 ~/.synconf 里的现有备份冲突，别等复制到一半再问。先把冲突项汇总给我，再让我先定默认策略，必要时我再改个别项。",
+      "expected_output": "The execution flow inserts a preflight conflict review immediately after selection, summarizes only the selected conflicting entries, asks for a default bulk decision first, and allows per-conflict exceptions before writing any files.",
       "files": []
     },
     {
@@ -82,13 +88,19 @@
     {
       "id": 14,
       "prompt": "如果仓库里的备份和我本机当前配置不一样，同步到本机之前也要先看 diff，再让我决定覆盖、跳过还是后面手动合并。",
-      "expected_output": "The repo-to-local sync flow shows diffs before overwriting local configs and offers overwrite, skip, or manual-merge choices with merge-note tracking.",
+      "expected_output": "The repo-to-local sync flow performs conflict preflight on the selected subset before writing, supports a default bulk decision plus per-conflict exceptions, and still offers overwrite, skip, or manual-merge handling with merge-note tracking.",
       "files": []
     },
     {
       "id": 15,
       "prompt": "把 Ghostty 和 Zed 的配置也纳入 synconf 管理，扫描、备份、同步到本机这三条链路都要支持。",
       "expected_output": "The workflow detects Ghostty and Zed config locations, includes them in per-software scan output, and supports both backup and repo-to-local sync for them.",
+      "files": []
+    },
+    {
+      "id": 28,
+      "prompt": "Zed 不要再整个目录都同步了，只跟踪 settings.json，避免把 prompts 数据库之类的大量运行时文件一起带进仓库。",
+      "expected_output": "The workflow tracks only Zed's `settings.json` file rather than the full Zed directory, so runtime data like prompt databases is excluded from scan, backup, and restore.",
       "files": []
     },
     {
@@ -134,6 +146,18 @@
       "files": []
     },
     {
+      "id": 26,
+      "prompt": "你现在是在 skill 源码仓库里调试 synconf，不是在 ~/.synconf 里直接跑脚本。扫描和管理时别把 manifest 写回技能目录，显式操作 ~/.synconf。",
+      "expected_output": "The workflow distinguishes the skill source tree from the generated runtime repo and uses an explicit repo target such as `--repo-dir ~/.synconf` when operating from source scripts.",
+      "files": []
+    },
+    {
+      "id": 27,
+      "prompt": "我刚手动选了 1,2,3 这几个配置做增量同步。后续自动化步骤可以非交互，但只能保留这几个编号，不能顺手把 manifest 里的其他旧配置也一起改掉。",
+      "expected_output": "The workflow can apply an explicit user-provided selection non-interactively with `manage.py --select --keep ...` and can constrain backup to the current incremental subset instead of touching unrelated tracked entries.",
+      "files": []
+    },
+    {
       "id": 23,
       "prompt": "开始执行前先检查当前用户有没有配置好 python 环境，至少告诉我 python 能不能用、解释器路径是什么，再继续 synconf。",
       "expected_output": "The environment detection step checks whether Python is available for the current user and reports Python availability plus interpreter path before continuing the sync workflow.",
@@ -146,9 +170,33 @@
       "files": []
     },
     {
+      "id": 33,
+      "prompt": "从 ~/.synconf 恢复到本机时，也要和备份一样：我选完要同步的软件后，先把有冲突的项汇总出来，让我先选默认策略，再允许我改个别项，最后才开始写本机文件。",
+      "expected_output": "The restore execution flow inserts a preflight conflict review immediately after selection, summarizes only the selected conflicting entries, asks for a default bulk decision first, allows per-conflict exceptions, and only then starts writing local files.",
+      "files": []
+    },
+    {
       "id": 25,
       "prompt": "我这个 ~/.synconf 是旧版本生成的，manifest 里还没有平台字段；恢复到 Linux 时也要根据路径自动识别，把 Windows 的 AppData 和 macOS 的 Application Support 备份过滤掉。",
       "expected_output": "The restore workflow remains backward compatible with older repos by inferring platform compatibility from backup paths when manifest platform metadata is missing, and filters unsupported Windows/macOS entries before confirmation on Linux.",
+      "files": []
+    },
+    {
+      "id": 29,
+      "prompt": "synconf 跑完以后，不要只说完成了。把这次做过的事、涉及到的软件、有没有待手工处理的 merge、接下来 git commit/push 要执行什么，都给我列成一份明细操作清单。",
+      "expected_output": "After finishing the requested synconf workflow, the response includes a detailed operational checklist covering completed actions, affected software entries, pending manual merge review, and exact next Git commands.",
+      "files": []
+    },
+    {
+      "id": 30,
+      "prompt": "我之前手动改过 ~/.synconf/manifest.json，还保留了一些旧条目上的备注和自定义字段。现在重新扫描时，只能把新发现的软件追加进去，不能把已有条目整条覆盖掉。",
+      "expected_output": "The scan workflow appends newly discovered configs to `~/.synconf/manifest.json` without overwriting existing entries, so prior tracked items and manual metadata remain intact.",
+      "files": []
+    },
+    {
+      "id": 31,
+      "prompt": "我在 manage.py 里取消跟踪某个软件时，不要只改 manifest.json。对应保存在 ~/.synconf 里的备份文件或目录也要一起删掉，避免仓库里留垃圾。",
+      "expected_output": "When `manage.py --select` removes tracked entries from `manifest.json`, it also deletes the corresponding backup files or directories from the repo and reports what was cleaned.",
       "files": []
     }
   ]

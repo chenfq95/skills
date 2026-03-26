@@ -10,11 +10,11 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from synconf_common import normalize_platform_name
+from common import normalize_platform_name
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-GENERATOR_PATH = REPO_ROOT / ".agents/skills/synconf/scripts/generate_sync.py"
+INIT_REPO_PATH = REPO_ROOT / ".agents/skills/synconf/scripts/init_repo.py"
 
 
 def run_command(
@@ -198,7 +198,7 @@ def main() -> None:
     """Generate a temp repo and validate restore-time platform filtering."""
     with tempfile.TemporaryDirectory(prefix="synconf-platform-check-") as temp_dir:
         repo_dir = Path(temp_dir) / "repo"
-        run_command([sys.executable, str(GENERATOR_PATH), "--repo-dir", str(repo_dir)])
+        run_command([sys.executable, str(INIT_REPO_PATH), "--repo-dir", str(repo_dir)])
 
         metadata_entries = [
             current_platform_entry(),

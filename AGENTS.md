@@ -29,13 +29,33 @@ There is no dedicated build pipeline right now. For this repo, "build/test" most
 
 - Syntax-check all current Python scripts:
   - `python3 -m py_compile .agents/skills/synconf/scripts/scan_configs.py .agents/skills/synconf/scripts/generate_sync.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/check_platform_filtering.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/backup.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/restore.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_platform_filtering.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_selection_order.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
 - Smoke-check CLI help for the scanner:
   - `python3 .agents/skills/synconf/scripts/scan_configs.py --help`
 - Smoke-check CLI help for the generator:
   - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
 - Validate generated restore platform filtering:
-  - `python3 .agents/skills/synconf/scripts/check_platform_filtering.py`
+  - `python3 .agents/skills/synconf/scripts/validate_platform_filtering.py`
+- Validate that backup detects repo/local conflicts before write decisions:
+  - `python3 .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
+- Validate that restore detects repo/local conflicts before write decisions:
+  - `python3 .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
+- Validate that scan preserves existing manifest entries:
+  - `python3 .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
+- Validate that explicit selection indices follow the latest scan order:
+  - `python3 .agents/skills/synconf/scripts/validate_scan_selection_order.py`
+- Validate that untracking entries also removes repo backups:
+  - `python3 .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
+- Validate that existing repos get missing scaffold files refreshed:
+  - `python3 .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
 
 ### Run the main scripts
 
@@ -57,13 +77,27 @@ Because there is no formal unit test runner yet, use one of these targeted check
 - Syntax-check one file:
   - `python3 -m py_compile .agents/skills/synconf/scripts/scan_configs.py`
   - `python3 -m py_compile .agents/skills/synconf/scripts/generate_sync.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/check_platform_filtering.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/backup.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/restore.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_platform_filtering.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_selection_order.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
+  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
 - Smoke-check one script's CLI contract:
   - `python3 .agents/skills/synconf/scripts/scan_configs.py --help`
   - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
 - Run one narrow behavior manually:
   - `python3 .agents/skills/synconf/scripts/scan_configs.py --json`
-  - `python3 .agents/skills/synconf/scripts/check_platform_filtering.py`
+  - `python3 .agents/skills/synconf/scripts/validate_platform_filtering.py`
+  - `python3 .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
+  - `python3 .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
+  - `python3 .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
+  - `python3 .agents/skills/synconf/scripts/validate_scan_selection_order.py`
+  - `python3 .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
+  - `python3 .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
 
 ### If you add tests later
 
