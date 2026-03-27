@@ -1,224 +1,217 @@
 # AGENTS.md
 
-This repository is for developing, debugging, and storing personal agent skills.
-Most code today lives under `.agents/skills/synconf/` and is plain Python 3.
+This repository stores agent skills and supporting scripts. The active codebase is the `synconf` skill under `.agents/skills/synconf/`, which is plain Python 3 plus instruction-heavy Markdown and JSON.
 
 ## Repo Snapshot
 
-- Primary assets: skill docs, Python helper scripts, references, and eval fixtures.
-- Main Python sources:
-  - `.agents/skills/synconf/scripts/scan_configs.py`
-  - `.agents/skills/synconf/scripts/generate_sync.py`
-- There is currently no `package.json`, `pyproject.toml`, `pytest.ini`, `tox.ini`, or `Makefile`.
-- There is currently no checked-in formal test suite.
+- Primary working area: `.agents/skills/synconf/`
+- Main Python entrypoints:
+  - `.agents/skills/synconf/scripts/manage.py`
+  - `.agents/skills/synconf/scripts/backup.py`
+  - `.agents/skills/synconf/scripts/restore.py`
+  - `.agents/skills/synconf/scripts/sync.py`
+  - `.agents/skills/synconf/scripts/init_repo.py`
+  - `.agents/skills/synconf/scripts/install.py`
+  - `.agents/skills/synconf/scripts/common.py`
+  - `.agents/skills/synconf/scripts/tests.py`
+- Supporting assets:
+  - `.agents/skills/synconf/SKILL.md`
+  - `.agents/skills/synconf/evals/evals.json`
+  - `.agents/skills/synconf/scripts/config.json`
+  - `.agents/skills/synconf/templates/README.md`
+  - `.agents/skills/synconf/templates/gitignore`
+- There is no `pyproject.toml`, `pytest.ini`, `tox.ini`, `package.json`, or `Makefile`.
+
+## Repo-Specific Rules Files
+
 - No Cursor rules were found in `.cursor/rules/` or `.cursorrules`.
 - No Copilot instructions were found in `.github/copilot-instructions.md`.
+- Treat this `AGENTS.md` as the top-level agent guidance file.
 
 ## Agent Priorities
 
-- Preserve the repo's current simplicity; do not introduce heavy tooling without a clear need.
-- Prefer small, targeted edits over broad refactors.
-- Keep guidance in sync across `SKILL.md`, scripts, references, and evals when behavior changes.
-- Treat this repo as instruction-heavy: wording changes can be product changes.
+- Preserve the repo's simplicity; avoid introducing new frameworks or tooling unless clearly needed.
+- Prefer small, targeted edits over broad rewrites.
+- Keep product behavior aligned across `SKILL.md`, scripts, templates, and evals.
+- Remember that wording changes in skill docs can be product changes.
+- Do not silently change the synconf workflow contract when editing scripts.
 
-## Build / Lint / Test Commands
+## Build, Lint, and Test Commands
 
-There is no dedicated build pipeline right now. For this repo, "build/test" mostly means syntax checks and script smoke checks.
+There is no dedicated build pipeline and no configured linter. Validation in this repo means Python syntax checks, CLI smoke checks, and the consolidated test runner.
 
-### Core validation commands
+### Core validation
 
-- Syntax-check all current Python scripts:
-  - `python3 -m py_compile .agents/skills/synconf/scripts/scan_configs.py .agents/skills/synconf/scripts/generate_sync.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/backup.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/restore.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_platform_filtering.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_selection_order.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
-- Smoke-check CLI help for the scanner:
-  - `python3 .agents/skills/synconf/scripts/scan_configs.py --help`
-- Smoke-check CLI help for the generator:
-  - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
-- Validate generated restore platform filtering:
-  - `python3 .agents/skills/synconf/scripts/validate_platform_filtering.py`
-- Validate that backup detects repo/local conflicts before write decisions:
-  - `python3 .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
-- Validate that restore detects repo/local conflicts before write decisions:
-  - `python3 .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
-- Validate that scan preserves existing manifest entries:
-  - `python3 .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
-- Validate that explicit selection indices follow the latest scan order:
-  - `python3 .agents/skills/synconf/scripts/validate_scan_selection_order.py`
-- Validate that untracking entries also removes repo backups:
-  - `python3 .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
-- Validate that existing repos get missing scaffold files refreshed:
-  - `python3 .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
+- Syntax-check all current synconf scripts:
+  - `python -m py_compile .agents/skills/synconf/scripts/common.py .agents/skills/synconf/scripts/manage.py .agents/skills/synconf/scripts/backup.py .agents/skills/synconf/scripts/restore.py .agents/skills/synconf/scripts/sync.py .agents/skills/synconf/scripts/init_repo.py .agents/skills/synconf/scripts/install.py .agents/skills/synconf/scripts/tests.py`
+- Run the consolidated test suite:
+  - `python .agents/skills/synconf/scripts/tests.py`
+- Smoke-check CLI help for interactive entrypoints:
+  - `python .agents/skills/synconf/scripts/manage.py --help`
+  - `python .agents/skills/synconf/scripts/backup.py --help`
+  - `python .agents/skills/synconf/scripts/restore.py --help`
+  - `python .agents/skills/synconf/scripts/sync.py --help`
+  - `python .agents/skills/synconf/scripts/init_repo.py --help`
 
-### Run the main scripts
+### Recommended validation by change type
 
-- Scan configs in human-readable mode:
-  - `python3 .agents/skills/synconf/scripts/scan_configs.py`
-- Scan configs in JSON mode:
-  - `python3 .agents/skills/synconf/scripts/scan_configs.py --json`
-- Show generator usage:
-  - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
-- Generate a sync repo for selected paths:
-  - `python3 .agents/skills/synconf/scripts/generate_sync.py ~/.zshrc ~/.gitconfig`
-- Generate into a custom repo directory:
-  - `python3 .agents/skills/synconf/scripts/generate_sync.py --repo-dir ~/dotfiles ~/.zshrc`
+- Docs or eval text only:
+  - Read for consistency; no code command required unless behavior changed.
+- `common.py`, `manage.py`, `backup.py`, `restore.py`, or `config.json` changed:
+  - Run full `py_compile`
+  - Run `python .agents/skills/synconf/scripts/tests.py`
+- CLI contract changed:
+  - Run the relevant `--help` command
+  - Run the full test suite if the CLI affects behavior
+- Template changes:
+  - Check the template files directly
+  - Run `python .agents/skills/synconf/scripts/tests.py` if scaffold behavior may be affected
 
-### "Single test" equivalents
+### Single-test workflow
 
-Because there is no formal unit test runner yet, use one of these targeted checks as the closest equivalent to a single test:
+There is no `pytest` suite yet. The closest equivalent to a single test is invoking one test function from `tests.py`.
+
+- Example single test:
+  - `python -c "import sys; sys.path.insert(0, r'.agents/skills/synconf/scripts'); import tests; tests.test_platform_filtering()"`
+- Other useful one-test targets:
+  - `tests.test_backup_conflict_detection()`
+  - `tests.test_restore_conflict_detection()`
+  - `tests.test_repo_scaffold_refresh()`
+  - `tests.test_selection_order()`
+  - `tests.test_manage_removal_cleanup()`
+  - `tests.test_manage_removal_cleans_software_directory()`
+  - `tests.test_repo_relative_path_layout()`
+  - `tests.test_zed_cross_platform_paths()`
+  - `tests.test_run_scan_filters_registry_platforms()`
+
+### Fastest narrow checks
 
 - Syntax-check one file:
-  - `python3 -m py_compile .agents/skills/synconf/scripts/scan_configs.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/generate_sync.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/backup.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/restore.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_platform_filtering.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_scan_selection_order.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
-  - `python3 -m py_compile .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
-- Smoke-check one script's CLI contract:
-  - `python3 .agents/skills/synconf/scripts/scan_configs.py --help`
-  - `python3 .agents/skills/synconf/scripts/generate_sync.py --help`
-- Run one narrow behavior manually:
-  - `python3 .agents/skills/synconf/scripts/scan_configs.py --json`
-  - `python3 .agents/skills/synconf/scripts/validate_platform_filtering.py`
-  - `python3 .agents/skills/synconf/scripts/validate_backup_conflict_detection.py`
-  - `python3 .agents/skills/synconf/scripts/validate_restore_conflict_detection.py`
-  - `python3 .agents/skills/synconf/scripts/validate_scan_manifest_merge.py`
-  - `python3 .agents/skills/synconf/scripts/validate_scan_selection_order.py`
-  - `python3 .agents/skills/synconf/scripts/validate_manage_removal_cleanup.py`
-  - `python3 .agents/skills/synconf/scripts/validate_repo_scaffold_refresh.py`
+  - `python -m py_compile .agents/skills/synconf/scripts/manage.py`
+- Run one behavioral test:
+  - `python -c "import sys; sys.path.insert(0, r'.agents/skills/synconf/scripts'); import tests; tests.test_selection_order()"`
+- Check one CLI contract:
+  - `python .agents/skills/synconf/scripts/backup.py --help`
 
-### If you add tests later
+### If a formal test runner is added later
 
-- Prefer `pytest` if a test suite is introduced.
-- Keep single-test invocation documented in this file, for example:
-  - `pytest path/to/test_file.py`
-  - `pytest path/to/test_file.py -k test_name`
-  - `pytest path/to/test_file.py::test_name`
+- Prefer `pytest`.
+- Update this file immediately with exact commands for:
+  - full suite
+  - one file
+  - one test function
+
+## Runtime and Workflow Notes
+
+- Default synconf repo path is `~/.synconf`.
+- Reuse an existing `~/.synconf`; do not delete or recreate it.
+- Use copy-based flows; do not switch synconf to symlink-based install or restore.
+- Selection is per software, not per category.
+- Persist tracked inventory in `manifest.json`.
+- Persist local-only scan/selection state in `.state.json`.
+- Store repo backups under `category/software/...`, not raw machine paths.
+- Normalize home-directory text with `__SYNCONF_HOME__` and `__SYNCONF_HOME_POSIX__`.
+- Keep pending manual merge tracking in `merge-notes/pending-merges.json`.
 
 ## Code Style
 
-The existing codebase is consistent enough to infer a house style. Follow it unless the repo adopts explicit tooling later.
+Follow the existing house style in `synconf/scripts/*.py` unless a stronger repo convention is introduced.
 
-### Python version and compatibility
+### Python version and dependencies
 
 - Target Python 3.8+.
-- Do not use Python 3.9+ typing syntax such as `list[str]`, `dict[str, object]`, or `Path | None`.
-- Import collection types from `typing` instead, e.g. `List`, `Dict`, `Optional`, `Tuple`.
-- Keep generated scripts compatible with the same Python floor as the source generator.
+- Do not use Python 3.9+ type syntax such as `list[str]`, `dict[str, Any]`, or `Path | None`.
+- Prefer standard-library modules only.
+- If you believe a new dependency is necessary, document why in the change.
 
 ### Imports
 
-- Use standard-library imports only unless there is a strong reason to add a dependency.
-- Group imports in the normal Python order: standard library first, then local imports if any.
-- Within a group, keep imports stable and roughly alphabetical.
-- Prefer explicit imports like `from pathlib import Path` over module-qualified path usage everywhere.
+- Group imports as: standard library, then local imports.
+- Keep imports stable and roughly alphabetical within a group.
+- Prefer explicit imports such as `from pathlib import Path`.
 - Remove unused imports when touching a file.
+- Avoid hidden side effects at import time.
 
 ### Formatting
 
-- Use 4 spaces for indentation.
+- Use 4-space indentation.
 - Use triple double-quoted docstrings.
-- Prefer readable multi-line literals and function calls over dense one-liners.
-- Keep line length reasonable; the current code occasionally exceeds 88 chars, but readability matters more than strict wrapping.
-- Use trailing commas in multi-line collections/calls when it improves diffs.
-- Prefer f-strings for user-facing output and diagnostics.
+- Prefer readable multi-line calls and literals over compressed one-liners.
+- Keep line length reasonable; readability matters more than strict width.
+- Use trailing commas in multi-line literals and calls when it improves diffs.
+- Prefer f-strings for diagnostics and user-facing output.
 
 ### Types and data modeling
 
-- Add type hints to new functions.
-- Use `@dataclass` for simple structured records, matching `ConfigItem` and `FileMapping`.
-- Use `Path` instead of raw path strings internally when working with filesystem logic.
-- Convert to `str` at process boundaries, serialized output, or terminal display.
-- Keep JSON-like payload typing pragmatic; `Dict[str, object]` is acceptable in this repo.
+- Add type hints to new or changed functions.
+- Use `typing` imports such as `List`, `Dict`, `Optional`, `Tuple`, `Sequence`, and `Mapping`.
+- Use `TypedDict` for JSON-shaped payloads like manifest or state entries.
+- Use `@dataclass` for simple structured records like `FileMapping`.
+- Use `Path` internally for filesystem operations; convert to `str` only at I/O boundaries.
+- Keep types pragmatic; overly complex typing is not necessary in this repo.
 
-### Naming conventions
+### Naming
 
-- Files: lower_snake_case, e.g. `scan_configs.py`.
-- Functions and variables: `snake_case`.
-- Classes: `PascalCase`.
-- Constants: `UPPER_SNAKE_CASE`.
-- User-facing software labels should be human-readable title case, e.g. `Windows Terminal`, `VS Code`.
-- Registry and rules tables should use descriptive names like `CONFIG_REGISTRY`, `CATEGORY_RULES`, `SOFTWARE_RULES`.
+- Files: `lower_snake_case.py`
+- Functions and variables: `snake_case`
+- Classes: `PascalCase`
+- Constants: `UPPER_SNAKE_CASE`
+- User-facing labels should remain human-readable title case, such as `VS Code` or `Windows Terminal`.
+- Prefer descriptive names like `manifest_entry_identity`, `collect_backup_conflicts`, and `platform_rules` over short abbreviations.
 
-### Control flow and structure
+### Module structure
 
-- Keep top-level modules easy to scan: constants near the top, helpers next, `main()` near the end.
-- Prefer small helper functions for repeated logic such as path normalization, diffing, and manifest handling.
-- Keep CLI entrypoints behind `if __name__ == "__main__":`.
-- Favor explicit branching over clever abstractions.
-- When generating scripts as strings, keep the generated code readable and aligned with the style of handwritten code.
+- Keep constants and typed payload definitions near the top.
+- Put small reusable helpers before command orchestration.
+- Keep `main()` near the end of each CLI module.
+- Guard entrypoints with `if __name__ == "__main__":`.
+- Prefer explicit control flow over clever abstraction.
+- When several scripts share logic, move it into `common.py` instead of duplicating it.
 
 ### Error handling
 
-- Fail loudly for unrecoverable setup problems, e.g. raise `RuntimeError` when Git init fails.
-- Gracefully skip expected environmental issues such as missing files or unreadable text configs.
-- Catch narrow exceptions when possible, as the current code does with `json.JSONDecodeError`, `OSError`, `PermissionError`, and `UnicodeDecodeError`.
-- When continuing after an error, print a clear warning that includes the affected path or action.
-- Avoid swallowing exceptions without either handling them meaningfully or explaining the fallback.
+- Fail loudly for true setup failures.
+- Gracefully handle expected environment issues like missing files, unreadable text, or absent repo state.
+- Catch narrow exceptions such as `json.JSONDecodeError`, `OSError`, `PermissionError`, and `UnicodeDecodeError`.
+- When continuing after an error, print a clear warning with the affected path or action.
+- Do not swallow exceptions silently.
 
 ### Filesystem and subprocess behavior
 
-- Prefer `pathlib.Path` operations over string concatenation.
-- Preserve home-relative structure when copying or mapping files.
-- Be careful with destructive operations like `shutil.rmtree`; only remove generated/copied targets when logic clearly requires replacement.
-- For subprocesses, use `subprocess.run(..., check=False)` and inspect `returncode` when the script needs custom error messages.
-- Capture stdout/stderr when surfacing a helpful failure reason to the user.
+- Prefer `pathlib.Path` over string concatenation.
+- Be careful with destructive operations like `shutil.rmtree` and `unlink`.
+- Only remove generated or tracked targets when the workflow clearly requires it.
+- For subprocesses, prefer `subprocess.run(..., check=False)` and inspect `returncode`.
+- Capture stdout/stderr when surfacing a failure reason; inherit stdio for interactive flows.
+- Preserve repo structure and avoid deleting `.git`, remotes, or history.
 
-### User interaction and CLI text
+### CLI and user interaction
 
-- Keep CLI prompts explicit and operational.
-- Default to numbered, per-software selection flows where the skill requires them.
-- Prefer concise status text with enough detail to support debugging.
-- Preserve important behavior words that recur in the skill spec, such as `overwrite`, `skip`, and `manual`.
-- Keep terminology consistent across scripts, docs, and evals.
+- Keep prompts explicit and operational.
+- Preserve numbered, per-software selection flows.
+- Use consistent behavior words: `overwrite`, `skip`, `manual`, `merge`.
+- Show diffs before overwriting when repo and local versions differ.
+- Keep final summaries concrete and action-oriented.
 
-### Comments and docstrings
+### Comments and docs
 
-- Keep module and function docstrings when they explain behavior succinctly.
-- Add comments only when the code would otherwise be non-obvious.
-- Prefer improving names or extracting helpers over adding explanatory comments.
+- Keep comments minimal and useful.
+- Prefer better names or helper extraction over explanatory comments.
+- Update `SKILL.md` and `evals/evals.json` when user-visible behavior changes.
+- Update templates if scaffolded repo output changes.
 
-## Behavior Rules Derived From The Skill
+## Security and Data Handling
 
-When editing `synconf` files, preserve these repo-specific expectations unless intentionally changing the product behavior everywhere:
-
-- Default repo path is `~/.synconf`.
-- Reuse existing `~/.synconf`; do not delete or recreate it.
-- Use copy-based install/restore flows; do not switch to symlinks.
-- Selection is per software, not per category.
-- Persist tracked state in `manifest.json`.
-- Support incremental sync rather than rebuild-only flows.
-- Show diffs before overwriting when versions differ.
-- Track manual merge follow-ups in `merge-notes/pending-merges.json`.
-- Normalize machine-specific home paths with `__SYNCONF_HOME__` and `__SYNCONF_HOME_POSIX__` placeholders.
-- Exclude secrets, private keys, credential files, and `.env`-style sensitive data.
+- Never broaden scanning to high-risk credential stores by default.
+- Exclude secrets, private keys, `.env` files, and credential dumps from tracked content.
+- Be especially careful around `.aws`, `.docker`, `.kube`, and GitHub CLI config paths.
+- Preserve the current behavior that avoids syncing editor caches and runtime junk.
 
 ## Editing Checklist For Agents
 
-- Read the relevant `SKILL.md` section before changing script behavior.
-- Update evals if behavior or wording expectations change.
-- Update references if supported software paths change.
-- Run syntax checks after Python edits.
-- Run at least one script smoke check after CLI changes.
-- Do not assume hidden tooling exists; inspect the repo first.
-
-## Current Gaps
-
-- No formal linter is configured.
-- No formatter is enforced.
-- No automated tests are checked in.
-- No workspace-level agent rule files are present besides this document.
-
-If you add any of those, update this file immediately with exact commands, especially the one-file / one-test workflow.
+- Read the relevant parts of `.agents/skills/synconf/SKILL.md` before changing synconf behavior.
+- Check whether docs, evals, templates, and scripts all need coordinated updates.
+- After Python edits, run at least `py_compile` on touched files.
+- After behavior changes, run `python .agents/skills/synconf/scripts/tests.py`.
+- After CLI changes, run the relevant `--help` command.
+- If you add tooling or tests, document the exact commands here.
