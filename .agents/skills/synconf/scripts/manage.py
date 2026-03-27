@@ -25,13 +25,16 @@ from common import (
     detect_supported_platforms_from_entry,
     format_platform_name,
     get_current_platform,
+    get_file_lock,
     get_platform_rules,
     load_manifest,
     load_state,
+    logger,
     manifest_entry_identity,
     prompt_yes_no,
     resolve_repo_dir,
     run_scan,
+    safe_remove_tree,
     save_manifest,
     save_state,
 )
@@ -104,23 +107,20 @@ def get_selection_view(
 
 
 def remove_repo_backup(entry: ManifestEntry, repo_dir: Path) -> bool:
-    """Remove the tracked backup file or directory for a manifest entry."""
+    """Remove the tracked backup file or directory for a manifest entry.
+
+    Args:
+        entry: Manifest entry to remove
+        repo_dir: Repository directory
+
+    Returns:
+        True if removed, False if not found or failed
+    """
     repo_path = repo_dir / Path(str(entry.get("repo_rel", "")))
     if not repo_path.exists() and not repo_path.is_symlink():
         return False
 
-    try:
-        if repo_path.is_symlink() or repo_path.is_file():
-            repo_path.unlink()
-        elif repo_path.is_dir():
-            shutil.rmtree(repo_path)
-        else:
-            repo_path.unlink()
-    except (OSError, PermissionError) as err:
-        print(f"Warning: failed to remove backup {repo_path}: {err}")
-        return False
-
-    return True
+    return safe_remove_tree(repo_path, follow_symlinks=False)
 
 
 def remove_empty_repo_parent_dirs(entry: ManifestEntry, repo_dir: Path) -> int:
@@ -150,7 +150,16 @@ def cleanup_software_directory(
     repo_dir: Path,
     kept_entries: List[ManifestEntry],
 ) -> bool:
-    """Remove the software-specific repo directory when no kept entries remain in it."""
+    """Remove the software-specific repo directory when no kept entries remain in it.
+
+    Args:
+        entry: Entry being removed
+        repo_dir: Repository directory
+        kept_entries: Entries that will remain after removal
+
+    Returns:
+        True if directory was removed, False otherwise
+    """
     repo_rel = Path(str(entry.get("repo_rel", "")))
     if not repo_rel.parts:
         return False
@@ -173,13 +182,7 @@ def cleanup_software_directory(
         if kept_repo_rel == target_rel_posix or kept_repo_rel.startswith(target_prefix):
             return False
 
-    try:
-        shutil.rmtree(target_path)
-    except (OSError, PermissionError) as err:
-        print(f"Warning: failed to remove software directory {target_path}: {err}")
-        return False
-
-    return True
+    return safe_remove_tree(target_path, follow_symlinks=False)
 
 
 def format_platforms(platforms: Optional[List[str]]) -> str:
@@ -234,7 +237,21 @@ def list_software(
 
 
 def parse_remove_indices(raw_value: str, total_count: int) -> List[int]:
-    """Parse indices to remove, supporting ranges like 1-3,5."""
+    """Parse indices to remove, supporting ranges like 1-3,5.
+
+    Args:
+        raw_value: User input string with indices/ranges
+        total_count: Total number of items (for bounds checking)
+
+    Returns:
+        List of valid 1-based indices
+
+    Raises:
+        ValueError: If input is invalid or out of bounds
+    """
+    if total_count <= 0:
+        raise ValueError("No items available to select")
+
     indices: List[int] = []
     for chunk in raw_value.split(","):
         value = chunk.strip()
@@ -242,13 +259,27 @@ def parse_remove_indices(raw_value: str, total_count: int) -> List[int]:
             continue
         if "-" in value:
             parts = value.split("-", 1)
+            left_part = parts[0].strip()
+            right_part = parts[1].strip()
+
+            # Handle negative numbers (not valid indices)
+            if not left_part or not right_part:
+                raise ValueError(f"Invalid range format: {value}")
+
             try:
-                start = int(parts[0].strip())
-                end = int(parts[1].strip())
+                start = int(left_part)
+                end = int(right_part)
             except ValueError as err:
-                raise ValueError(f"Invalid range: {value}") from err
-            if start < 1 or end > total_count or start > end:
-                raise ValueError(f"Range out of bounds: {value}")
+                raise ValueError(f"Invalid range (non-integer): {value}") from err
+
+            # Check bounds
+            if start < 1:
+                raise ValueError(f"Range start must be >= 1: {value}")
+            if end > total_count:
+                raise ValueError(f"Range end {end} exceeds total count {total_count}")
+            if start > end:
+                raise ValueError(f"Range start > end: {value} (did you mean {end}-{start}?)")
+
             for i in range(start, end + 1):
                 if i not in indices:
                     indices.append(i)
@@ -256,9 +287,11 @@ def parse_remove_indices(raw_value: str, total_count: int) -> List[int]:
             try:
                 index = int(value)
             except ValueError as err:
-                raise ValueError(f"Invalid index: {value}") from err
-            if index < 1 or index > total_count:
-                raise ValueError(f"Index out of range: {index}")
+                raise ValueError(f"Invalid index (non-integer): {value}") from err
+            if index < 1:
+                raise ValueError(f"Index must be >= 1: {index}")
+            if index > total_count:
+                raise ValueError(f"Index {index} out of range (max: {total_count})")
             if index not in indices:
                 indices.append(index)
 
@@ -571,13 +604,24 @@ def parse_config_entries(
     config_json: Optional[str],
     config_file: Optional[str],
 ) -> Optional[List[ManifestEntry]]:
-    """Parse entries from JSON string or file."""
+    """Parse entries from JSON string or file.
+
+    Args:
+        config_json: JSON string with entries
+        config_file: Path to JSON file with entries
+
+    Returns:
+        List of manifest entries, or None if parsing failed
+    """
     if config_json:
         try:
             data = json.loads(config_json)
             if isinstance(data, list):
                 return data
-            return data.get("files", [])
+            if isinstance(data, dict):
+                return data.get("files", [])
+            print(f"Error: Expected JSON object or array, got {type(data).__name__}")
+            return None
         except json.JSONDecodeError as err:
             print(f"Error: Invalid JSON string: {err}")
             return None
@@ -588,12 +632,22 @@ def parse_config_entries(
             print(f"Error: Config file not found: {config_file}")
             return None
         try:
-            data = json.loads(config_path.read_text(encoding="utf-8"))
+            content = config_path.read_text(encoding="utf-8")
+            if not content.strip():
+                print(f"Error: Config file is empty: {config_file}")
+                return None
+            data = json.loads(content)
             if isinstance(data, list):
                 return data
-            return data.get("files", [])
+            if isinstance(data, dict):
+                return data.get("files", [])
+            print(f"Error: Expected JSON object or array, got {type(data).__name__}")
+            return None
         except json.JSONDecodeError as err:
             print(f"Error: Invalid JSON in {config_file}: {err}")
+            return None
+        except OSError as err:
+            print(f"Error: Cannot read config file {config_file}: {err}")
             return None
 
     return None

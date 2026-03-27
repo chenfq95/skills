@@ -11,10 +11,13 @@ from pathlib import Path
 from typing import Dict, List, Sequence
 
 from common import (
+    DiskSpaceError,
     HOME,
     ManifestEntry,
     OperationRecord,
+    PathValidationError,
     append_pending_merge,
+    check_disk_space,
     choose_conflict_action,
     choose_conflict_decisions,
     choose_conflict_plan,
@@ -29,8 +32,12 @@ from common import (
     filter_entries_for_platform,
     format_platform_name,
     get_current_platform,
+    get_directory_size,
     get_platform_rules,
+    is_safe_symlink,
+    is_symlink_to_directory,
     load_manifest,
+    logger,
     path_from_rel,
     print_conflict_preview,
     print_diff,
@@ -41,6 +48,8 @@ from common import (
     render_text,
     resolve_conflict_action,
     resolve_repo_dir,
+    safe_remove_tree,
+    validate_path_within_home,
 )
 
 
@@ -61,19 +70,65 @@ def report_filtered_entries(
 
 
 def copy_entry(src: Path, dest: Path, is_dir: bool) -> None:
-    """Copy repo config to local with placeholder rendering."""
+    """Copy repo config to local with placeholder rendering.
+
+    Args:
+        src: Source path (repo location)
+        dest: Destination path (local config)
+        is_dir: Whether source is a directory
+
+    Raises:
+        DiskSpaceError: If insufficient disk space
+        PermissionError: If write permission denied
+        OSError: If copy fails
+    """
+    # Check disk space before copying
     if is_dir:
-        if dest.exists():
-            shutil.rmtree(dest)
+        required_size = get_directory_size(src)
+    else:
+        try:
+            required_size = src.stat().st_size
+        except OSError:
+            required_size = 0
+
+    try:
+        check_disk_space(dest, required_size)
+    except DiskSpaceError as e:
+        logger.error("Disk space check failed: %s", e)
+        raise
+
+    if is_dir:
+        # Safety check: don't blindly rmtree a symlink to a directory
+        if dest.exists() or dest.is_symlink():
+            if is_symlink_to_directory(dest):
+                logger.warning(
+                    "Destination %s is a symlink to a directory. "
+                    "Removing symlink only, not the target.",
+                    dest
+                )
+                dest.unlink()
+            elif not safe_remove_tree(dest, follow_symlinks=False):
+                raise OSError(f"Cannot safely remove existing destination: {dest}")
+
         shutil.copytree(src, dest)
         for child in dest.rglob("*"):
             if not child.is_file():
                 continue
             text = read_text_file(child)
             if text is not None:
-                child.write_text(render_text(text), encoding="utf-8")
+                try:
+                    child.write_text(render_text(text), encoding="utf-8")
+                except PermissionError as e:
+                    logger.warning("Cannot write to %s: %s", child, e)
     else:
         dest.parent.mkdir(parents=True, exist_ok=True)
+        # Remove existing file/symlink safely
+        if dest.exists() or dest.is_symlink():
+            try:
+                dest.unlink()
+            except PermissionError as e:
+                raise PermissionError(f"Cannot remove existing file {dest}: {e}")
+
         text = read_text_file(src)
         if text is None:
             shutil.copy2(src, dest)
@@ -197,10 +252,44 @@ def main() -> None:
 
     for entry in selected_entries:
         software = entry_software(entry)
-        repo_path = repo_dir / path_from_rel(entry_repo_rel(entry))
-        local_path = HOME / path_from_rel(entry_home_rel(entry))
+        home_rel = entry_home_rel(entry)
+        repo_rel = entry_repo_rel(entry)
+
+        # Validate that local path doesn't escape HOME
+        try:
+            validate_path_within_home(path_from_rel(home_rel))
+        except PathValidationError as e:
+            print(f"Warning: {software} - {e}")
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(repo_dir / path_from_rel(repo_rel)),
+                    "target": str(HOME / path_from_rel(home_rel)),
+                    "target_exists_before": False,
+                    "action": "skip-invalid-path",
+                }
+            )
+            continue
+
+        repo_path = repo_dir / path_from_rel(repo_rel)
+        local_path = HOME / path_from_rel(home_rel)
         is_dir = entry_is_dir(entry)
         target_exists_before = local_path.exists() or local_path.is_symlink()
+
+        # Check for broken symlinks in source
+        if repo_path.is_symlink() and not is_safe_symlink(repo_path):
+            print(f"Warning: {repo_path} is a broken or circular symlink, skipping")
+            summary["missing_in_repo"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(repo_path),
+                    "target": str(local_path),
+                    "target_exists_before": target_exists_before,
+                    "action": "skip-broken-symlink",
+                }
+            )
+            continue
 
         if not repo_path.exists():
             print(f"Warning: {repo_path} not found in repo, skipping")
@@ -292,18 +381,57 @@ def main() -> None:
                     )
                     continue
 
-        copy_entry(repo_path, local_path, is_dir)
-        print(f"Synced {entry_repo_rel(entry)} -> {local_path}")
-        summary["synced"].append(software)
-        operations.append(
-            {
-                "software": software,
-                "source": str(repo_path),
-                "target": str(local_path),
-                "target_exists_before": target_exists_before,
-                "action": "overwrite" if target_exists_before else "create",
-            }
-        )
+        try:
+            copy_entry(repo_path, local_path, is_dir)
+            print(f"Synced {repo_rel} -> {local_path}")
+            summary["synced"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(repo_path),
+                    "target": str(local_path),
+                    "target_exists_before": target_exists_before,
+                    "action": "overwrite" if target_exists_before else "create",
+                }
+            )
+        except DiskSpaceError as e:
+            print(f"Error: {e}")
+            print(f"Skipped {software} due to insufficient disk space")
+            summary["skipped"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(repo_path),
+                    "target": str(local_path),
+                    "target_exists_before": target_exists_before,
+                    "action": "skip-disk-space",
+                }
+            )
+        except PermissionError as e:
+            print(f"Error: Permission denied for {software}: {e}")
+            print(f"Skipped {software} due to permission error")
+            summary["skipped"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(repo_path),
+                    "target": str(local_path),
+                    "target_exists_before": target_exists_before,
+                    "action": "skip-permission-denied",
+                }
+            )
+        except OSError as e:
+            print(f"Error copying {software}: {e}")
+            summary["skipped"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(repo_path),
+                    "target": str(local_path),
+                    "target_exists_before": target_exists_before,
+                    "action": "skip-copy-error",
+                }
+            )
 
     print()
     print("Repo-to-local sync complete!")

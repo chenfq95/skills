@@ -52,6 +52,13 @@ python3 ~/.synconf/scripts/restore.py
 | `restore.py` | Restore repo → local with platform filtering |
 | `sync.py` | Multi-round interactive backup/restore |
 
+**Skill-only scripts** (run from skill source, not copied to repo):
+| Command | Description |
+|---------|-------------|
+| `init_repo.py` | One-time repo initialization |
+| `update_scripts.py` | Update repo scripts to latest version |
+| `update_scripts.py --dry-run` | Preview script updates without changes |
+
 All commands support `-y` for non-interactive mode, **except `select`** which requires explicit user choice. The `-y` flag must appear before the subcommand.
 
 ## Agent Execution Flow
@@ -89,6 +96,8 @@ When operating from the skill source tree, always use `from scripts.common impor
     └── sync.py         # Multi-round sync
 ```
 
+**Note:** `init_repo.py` and `update_scripts.py` are only in the skill source, not copied to the repo.
+
 **Directory structure rule:** Both files and directories preserve their original names under `category/software/`. For example:
 - `~/.vimrc` (file) → `editor/vim/.vimrc`
 - `~/.vim` (directory) → `editor/vim/.vim/`
@@ -115,3 +124,31 @@ For Zed specifically, prefer the user config locations that differ by platform:
 - Auto-exclude editor cache directories during backup: History, Cache, CachedData, workspaceStorage, globalStorage, logs, etc.
 - Never overwrite without showing diff first
 - Pending merges tracked in `merge-notes/pending-merges.json`
+
+## Updating Scripts
+
+When the synconf skill is updated with new features or bug fixes, update the scripts in your repo by running `update_scripts.py` from the **skill source directory** (not from the synconf repo):
+
+```bash
+# Preview what would be updated
+python3 <skill-path>/scripts/update_scripts.py --dry-run
+
+# Update scripts (backs up existing scripts automatically)
+python3 <skill-path>/scripts/update_scripts.py
+
+# Update without confirmation
+python3 <skill-path>/scripts/update_scripts.py --force
+
+# Also update .gitignore and README.md
+python3 <skill-path>/scripts/update_scripts.py --include-templates
+```
+
+The updater will:
+1. Compare script versions and show a status table (new/modified/unchanged)
+2. Backup modified scripts to `.scripts-backup-YYYYMMDD-HHMMSS`
+3. Copy updated scripts and set executable permissions
+
+After updating, commit the changes:
+```bash
+git -C ~/.synconf add -A && git -C ~/.synconf commit -m "Update synconf scripts"
+```

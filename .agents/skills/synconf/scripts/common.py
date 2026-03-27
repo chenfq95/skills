@@ -6,15 +6,19 @@ Compatible with Python 3.8+ (avoids 3.9+ type syntax).
 """
 
 import difflib
+import fcntl
 import json
 import logging
+import os
 import platform
 import shutil
+import signal
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, TypedDict
+from typing import Any, Dict, Generator, List, Mapping, Optional, Sequence, Tuple, TypedDict
 
 # Configure module-level logger
 logger = logging.getLogger("synconf")
@@ -36,6 +40,11 @@ CONFIG_PATH = SCRIPTS_DIR / "config.json"
 HOME_TOKEN = "__SYNCONF_HOME__"
 HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
 
+# Path constraints
+MAX_PATH_COMPONENT_LENGTH = 200  # Max length for path components after slugify
+MAX_FILE_SIZE_FOR_FULL_READ = 50 * 1024 * 1024  # 50MB limit for full file reads
+MAX_SYMLINK_DEPTH = 40  # Maximum symlink resolution depth
+
 REPO_SUBDIRECTORIES = [
     "shell",
     "git",
@@ -53,7 +62,6 @@ RUNTIME_REPO_FILES = [
     "backup.py",
     "restore.py",
     "sync.py",
-    "init_repo.py",
     "install.py",
     "common.py",
     "config.json",
@@ -153,6 +161,84 @@ def entry_is_dir(entry: Mapping[str, Any]) -> bool:
 
 
 # -----------------------------------------------------------------------------
+# File Locking
+# -----------------------------------------------------------------------------
+
+
+class FileLockError(Exception):
+    """Raised when a file lock cannot be acquired."""
+
+
+@contextmanager
+def file_lock(
+    path: Path,
+    timeout: float = 10.0,
+    shared: bool = False,
+) -> Generator[None, None, None]:
+    """Context manager for file-based locking.
+
+    Args:
+        path: Path to the file to lock (a .lock file will be created)
+        timeout: Maximum time to wait for lock in seconds
+        shared: If True, acquire a shared (read) lock; otherwise exclusive (write)
+
+    Raises:
+        FileLockError: If lock cannot be acquired within timeout
+    """
+    lock_path = path.parent / f".{path.name}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lock_type = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+    lock_fd = None
+
+    try:
+        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+
+        # Set up alarm for timeout (Unix only)
+        def timeout_handler(signum: int, frame: Any) -> None:
+            raise FileLockError(f"Timeout acquiring lock on {path}")
+
+        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(int(timeout))
+
+        try:
+            fcntl.flock(lock_fd, lock_type)
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+        yield
+
+    finally:
+        if lock_fd is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
+            # Clean up lock file if possible
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+
+
+@contextmanager
+def file_lock_windows(
+    path: Path,
+    timeout: float = 10.0,
+    shared: bool = False,
+) -> Generator[None, None, None]:
+    """Fallback file locking for Windows (no-op with warning)."""
+    logger.debug("File locking not fully supported on Windows: %s", path)
+    yield
+
+
+def get_file_lock() -> Any:
+    """Return the appropriate file lock context manager for the platform."""
+    if IS_WINDOWS:
+        return file_lock_windows
+    return file_lock
+
+
+# -----------------------------------------------------------------------------
 # ANSI Colors
 # -----------------------------------------------------------------------------
 
@@ -170,6 +256,81 @@ class Colors:
     def check(cls) -> str:
         """Return a green checkmark."""
         return f"{cls.GREEN}\u2713{cls.RESET}"
+
+
+# -----------------------------------------------------------------------------
+# Path Validation
+# -----------------------------------------------------------------------------
+
+
+class PathValidationError(Exception):
+    """Raised when a path fails validation checks."""
+
+
+def validate_path_within_home(path: Path, home: Optional[Path] = None) -> None:
+    """Validate that a path is safely within the home directory.
+
+    Args:
+        path: Path to validate (can be relative to home)
+        home: Home directory (defaults to HOME)
+
+    Raises:
+        PathValidationError: If path escapes home directory
+    """
+    resolved_home = (home or HOME).resolve()
+    try:
+        resolved_path = (resolved_home / path).resolve()
+        resolved_path.relative_to(resolved_home)
+    except ValueError:
+        raise PathValidationError(
+            f"Path '{path}' escapes home directory. "
+            "Refusing to operate on paths outside HOME."
+        )
+
+
+def validate_not_reserved_name(name: str) -> None:
+    """Validate that a filename is not a Windows reserved name.
+
+    Args:
+        name: Filename to check
+
+    Raises:
+        PathValidationError: If name is reserved
+    """
+    reserved = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    }
+    base_name = name.upper().split(".")[0]
+    if base_name in reserved:
+        raise PathValidationError(f"'{name}' is a reserved Windows filename")
+
+
+def is_safe_symlink(path: Path, max_depth: int = MAX_SYMLINK_DEPTH) -> bool:
+    """Check if a symlink is safe to follow (no loops, exists).
+
+    Args:
+        path: Path to check
+        max_depth: Maximum symlink resolution depth
+
+    Returns:
+        True if safe, False if broken or circular
+    """
+    try:
+        seen = set()
+        current = path
+        for _ in range(max_depth):
+            if not current.is_symlink():
+                return current.exists()
+            real = current.resolve()
+            if real in seen:
+                return False  # Circular symlink
+            seen.add(real)
+            current = real
+        return False  # Too deep
+    except (OSError, ValueError):
+        return False
 
 
 # -----------------------------------------------------------------------------
@@ -448,9 +609,25 @@ def path_from_rel(path_str: str) -> Path:
 # -----------------------------------------------------------------------------
 
 
-def read_text_file(path: Path) -> Optional[str]:
-    """Read a text file, returning None if not readable as UTF-8."""
+def read_text_file(path: Path, max_size: int = MAX_FILE_SIZE_FOR_FULL_READ) -> Optional[str]:
+    """Read a text file, returning None if not readable as UTF-8.
+
+    Args:
+        path: Path to read
+        max_size: Maximum file size in bytes (default 50MB)
+
+    Returns:
+        File contents as string, or None if binary/too large/unreadable
+    """
     try:
+        # Check file size first to avoid loading huge files
+        size = path.stat().st_size
+        if size > max_size:
+            logger.warning(
+                "File %s is too large (%d bytes > %d), treating as binary",
+                path, size, max_size
+            )
+            return None
         return path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError):
         return None
@@ -529,8 +706,16 @@ def infer_software(
     return path.name or path.as_posix()
 
 
-def slugify_path_component(value: str) -> str:
-    """Convert a user-facing label into a stable repo path component."""
+def slugify_path_component(value: str, max_length: int = MAX_PATH_COMPONENT_LENGTH) -> str:
+    """Convert a user-facing label into a stable repo path component.
+
+    Args:
+        value: Input string to slugify
+        max_length: Maximum output length
+
+    Returns:
+        Slugified string safe for use in file paths
+    """
     lowered = value.strip().lower()
     chars = []
     last_was_dash = False
@@ -545,7 +730,19 @@ def slugify_path_component(value: str) -> str:
             chars.append("-")
             last_was_dash = True
 
-    return "".join(chars).strip("-") or "item"
+    result = "".join(chars).strip("-") or "item"
+
+    # Truncate if too long
+    if len(result) > max_length:
+        result = result[:max_length].rstrip("-")
+
+    # Validate not a reserved name
+    try:
+        validate_not_reserved_name(result)
+    except PathValidationError:
+        result = f"_{result}"
+
+    return result
 
 
 def platform_path_component(platforms: Optional[Sequence[str]]) -> Optional[str]:
@@ -584,11 +781,26 @@ def repo_relative_path(
 
 
 def manifest_entry_identity(entry: Mapping[str, Any]) -> str:
-    """Return the stable logical identity for a manifest entry."""
+    """Return the stable logical identity for a manifest entry.
+
+    Args:
+        entry: Manifest entry dict
+
+    Returns:
+        Identity string (home_rel preferred, then repo_rel, then software name)
+    """
     home_rel = entry_home_rel(entry)
     if home_rel:
         return home_rel
-    return entry_repo_rel(entry)
+    repo_rel = entry_repo_rel(entry)
+    if repo_rel:
+        return repo_rel
+    # Fallback to software name to avoid empty identity
+    software = entry_software(entry)
+    if software and software != "Unknown":
+        return f"__software__{software}"
+    # Last resort: generate a unique-ish identity
+    return f"__entry__{id(entry)}"
 
 
 # -----------------------------------------------------------------------------
@@ -596,23 +808,93 @@ def manifest_entry_identity(entry: Mapping[str, Any]) -> str:
 # -----------------------------------------------------------------------------
 
 
-def summarize_directory(path: Path) -> List[str]:
-    """List all files in a directory recursively."""
-    return sorted(
-        str(child.relative_to(path)).replace("\\", "/")
-        for child in path.rglob("*")
-        if child.is_file()
-    )
+def summarize_directory(path: Path, max_depth: int = MAX_SYMLINK_DEPTH) -> List[str]:
+    """List all files in a directory recursively, safely handling symlinks.
+
+    Args:
+        path: Directory to summarize
+        max_depth: Maximum symlink resolution depth
+
+    Returns:
+        Sorted list of relative file paths
+    """
+    results = []
+    seen_real_paths: set = set()
+
+    def walk_dir(current: Path, rel_prefix: str, depth: int) -> None:
+        if depth > max_depth:
+            logger.warning("Max depth reached while walking %s", current)
+            return
+
+        try:
+            children = list(current.iterdir())
+        except (OSError, PermissionError) as e:
+            logger.warning("Cannot read directory %s: %s", current, e)
+            return
+
+        for child in children:
+            rel_path = f"{rel_prefix}/{child.name}" if rel_prefix else child.name
+
+            try:
+                # Detect symlink loops
+                if child.is_symlink():
+                    real_path = child.resolve()
+                    if real_path in seen_real_paths:
+                        logger.warning("Symlink loop detected at %s", child)
+                        continue
+                    if not real_path.exists():
+                        logger.warning("Broken symlink at %s", child)
+                        continue
+                    seen_real_paths.add(real_path)
+
+                if child.is_file():
+                    results.append(rel_path.replace("\\", "/"))
+                elif child.is_dir():
+                    walk_dir(child, rel_path, depth + 1)
+            except (OSError, PermissionError) as e:
+                logger.warning("Cannot access %s: %s", child, e)
+
+    walk_dir(path, "", 0)
+    return sorted(results)
 
 
 def files_equal(src: Path, dest: Path) -> bool:
-    """Check if two files have equal content."""
+    """Check if two files have equal content.
+
+    Args:
+        src: Source file path
+        dest: Destination file path
+
+    Returns:
+        True if files have identical content, False otherwise
+    """
+    try:
+        # Quick size check first
+        src_stat = src.stat()
+        dest_stat = dest.stat()
+        if src_stat.st_size != dest_stat.st_size:
+            return False
+    except OSError as e:
+        logger.warning("Cannot stat files for comparison: %s", e)
+        return False
+
     src_lines = read_text_lines(src)
     dest_lines = read_text_lines(dest)
     if src_lines is None or dest_lines is None:
+        # Binary comparison
         try:
-            return src.read_bytes() == dest.read_bytes()
-        except OSError:
+            # Compare in chunks for large files
+            chunk_size = 8192
+            with open(src, 'rb') as f1, open(dest, 'rb') as f2:
+                while True:
+                    chunk1 = f1.read(chunk_size)
+                    chunk2 = f2.read(chunk_size)
+                    if chunk1 != chunk2:
+                        return False
+                    if not chunk1:
+                        return True
+        except OSError as e:
+            logger.warning("Cannot compare binary files: %s", e)
             return False
     return src_lines == dest_lines
 
@@ -734,21 +1016,33 @@ def load_manifest(manifest_path: Path) -> ManifestPayload:
     if not manifest_path.exists():
         return empty_manifest()
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        return payload
-    except json.JSONDecodeError:
+        lock_fn = get_file_lock()
+        with lock_fn(manifest_path, shared=True):
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            return payload
+    except (json.JSONDecodeError, FileLockError) as e:
+        logger.warning("Failed to load manifest: %s", e)
         return empty_manifest()
 
 
 def save_manifest(payload: ManifestPayload, manifest_path: Path) -> None:
-    """Save manifest.json.
+    """Save manifest.json with file locking.
 
     Args:
         payload: Manifest data to save
         manifest_path: Path to manifest.json
     """
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    lock_fn = get_file_lock()
+    try:
+        with lock_fn(manifest_path, shared=False):
+            # Write to temp file first, then rename for atomicity
+            temp_path = manifest_path.with_suffix(".json.tmp")
+            temp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            temp_path.replace(manifest_path)
+    except FileLockError as e:
+        logger.error("Failed to acquire lock for manifest: %s", e)
+        raise
 
 
 def load_state(repo_dir: Path) -> StatePayload:
@@ -757,15 +1051,25 @@ def load_state(repo_dir: Path) -> StatePayload:
     if not state_path.exists():
         return {}
     try:
-        return json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        lock_fn = get_file_lock()
+        with lock_fn(state_path, shared=True):
+            return json.loads(state_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, FileLockError) as e:
+        logger.warning("Failed to load state: %s", e)
         return {}
 
 
 def save_state(state: StatePayload, repo_dir: Path) -> None:
-    """Save .state.json (local-only, gitignored)."""
+    """Save .state.json (local-only, gitignored) with file locking."""
     state_path = repo_dir / ".state.json"
-    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    lock_fn = get_file_lock()
+    try:
+        with lock_fn(state_path, shared=False):
+            temp_path = state_path.with_suffix(".json.tmp")
+            temp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+            temp_path.replace(state_path)
+    except FileLockError as e:
+        logger.warning("Failed to save state: %s", e)
 
 
 # -----------------------------------------------------------------------------
@@ -1292,6 +1596,177 @@ def ensure_gitignore(repo_dir: Path) -> None:
     else:
         content = ".state.json\n__pycache__/\n"
     gitignore_path.write_text(content, encoding="utf-8")
+
+
+# -----------------------------------------------------------------------------
+# Disk Space and Safe File Operations
+# -----------------------------------------------------------------------------
+
+
+class DiskSpaceError(Exception):
+    """Raised when there is insufficient disk space."""
+
+
+def get_directory_size(path: Path, max_files: int = 10000) -> int:
+    """Calculate total size of a directory in bytes.
+
+    Args:
+        path: Directory path
+        max_files: Maximum files to count before returning estimate
+
+    Returns:
+        Total size in bytes
+    """
+    total = 0
+    count = 0
+    try:
+        for f in path.rglob("*"):
+            if count >= max_files:
+                # Estimate remaining based on average
+                avg_size = total / count if count > 0 else 0
+                remaining = sum(1 for _ in path.rglob("*")) - count
+                total += int(avg_size * remaining * 0.5)  # Conservative estimate
+                break
+            if _should_exclude_path(f):
+                continue
+            if f.is_file():
+                try:
+                    total += f.stat().st_size
+                except (OSError, PermissionError):
+                    pass
+            count += 1
+    except (OSError, PermissionError):
+        pass
+    return total
+
+
+def check_disk_space(dest: Path, required_bytes: int, safety_margin: float = 1.1) -> None:
+    """Check if there is sufficient disk space for an operation.
+
+    Args:
+        dest: Destination path (uses its filesystem)
+        required_bytes: Bytes needed for the operation
+        safety_margin: Multiplier for required space (default 10% extra)
+
+    Raises:
+        DiskSpaceError: If insufficient space available
+    """
+    # Find existing parent directory to check space
+    check_path = dest
+    while not check_path.exists():
+        check_path = check_path.parent
+        if check_path == check_path.parent:
+            break
+
+    try:
+        stat = shutil.disk_usage(check_path)
+        needed = int(required_bytes * safety_margin)
+        if stat.free < needed:
+            raise DiskSpaceError(
+                f"Insufficient disk space. Need {needed / (1024*1024):.1f}MB, "
+                f"only {stat.free / (1024*1024):.1f}MB available on {check_path}"
+            )
+    except OSError as e:
+        logger.warning("Could not check disk space: %s", e)
+
+
+def safe_copy_with_space_check(
+    src: Path,
+    dest: Path,
+    is_dir: bool,
+) -> None:
+    """Copy file or directory with disk space check.
+
+    Args:
+        src: Source path
+        dest: Destination path
+        is_dir: Whether source is a directory
+
+    Raises:
+        DiskSpaceError: If insufficient disk space
+        OSError: If copy fails
+    """
+    # Calculate required space
+    if is_dir:
+        required = get_directory_size(src)
+    else:
+        try:
+            required = src.stat().st_size
+        except OSError:
+            required = 0
+
+    # Check available space
+    check_disk_space(dest, required)
+
+
+def is_symlink_to_directory(path: Path) -> bool:
+    """Check if path is a symlink pointing to a directory.
+
+    Args:
+        path: Path to check
+
+    Returns:
+        True if symlink to directory, False otherwise
+    """
+    try:
+        return path.is_symlink() and path.resolve().is_dir()
+    except (OSError, ValueError):
+        return False
+
+
+def safe_remove_tree(path: Path, follow_symlinks: bool = False) -> bool:
+    """Safely remove a directory tree.
+
+    Args:
+        path: Path to remove
+        follow_symlinks: If False, refuse to remove symlinks to directories
+
+    Returns:
+        True if removed, False if skipped or failed
+    """
+    if not path.exists() and not path.is_symlink():
+        return True
+
+    # Safety check for symlinks
+    if path.is_symlink():
+        if not follow_symlinks and is_symlink_to_directory(path):
+            logger.warning(
+                "Refusing to remove symlink to directory: %s -> %s",
+                path, path.resolve()
+            )
+            return False
+        try:
+            path.unlink()
+            return True
+        except OSError as e:
+            logger.warning("Failed to remove symlink %s: %s", path, e)
+            return False
+
+    try:
+        shutil.rmtree(path)
+        return True
+    except (OSError, PermissionError) as e:
+        logger.warning("Failed to remove directory %s: %s", path, e)
+        return False
+
+
+def check_git_available() -> bool:
+    """Check if git command is available.
+
+    Returns:
+        True if git is available, False otherwise
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 
 # -----------------------------------------------------------------------------

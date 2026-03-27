@@ -14,13 +14,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from common import (
     DEFAULT_REPO_DIR,
     HOME,
     FileMapping,
     ManifestEntry,
+    check_git_available,
     detect_platforms_from_path,
     ensure_gitignore,
     ensure_repo_scaffold,
@@ -30,6 +31,7 @@ from common import (
     infer_category,
     infer_software,
     load_manifest,
+    logger,
     manifest_entry_identity,
     relative_to_home,
     repo_relative_path,
@@ -79,23 +81,54 @@ def merge_mappings(
 
 
 def ensure_repo_dir(dotfiles_dir: Path) -> None:
-    """Create the repository directory if needed."""
+    """Create the repository directory if needed.
+
+    Args:
+        dotfiles_dir: Target directory
+
+    Raises:
+        ValueError: If path exists but is not a directory
+    """
+    if dotfiles_dir.exists():
+        if not dotfiles_dir.is_dir():
+            raise ValueError(
+                f"Cannot create repository: {dotfiles_dir} exists but is not a directory"
+            )
+        return
     dotfiles_dir.mkdir(parents=True, exist_ok=True)
 
 
 def ensure_git_repo(dotfiles_dir: Path) -> None:
-    """Initialize the repository when needed."""
+    """Initialize the repository when needed.
+
+    Args:
+        dotfiles_dir: Repository directory
+
+    Raises:
+        RuntimeError: If git is not available or initialization fails
+    """
     git_dir = dotfiles_dir / ".git"
     if git_dir.exists():
         print(f"Reusing existing Git repository at {dotfiles_dir}")
         return
 
-    result = subprocess.run(
-        ["git", "init", str(dotfiles_dir)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    if not check_git_available():
+        raise RuntimeError(
+            "Git is not installed or not in PATH. "
+            "Please install git first: https://git-scm.com/downloads"
+        )
+
+    try:
+        result = subprocess.run(
+            ["git", "init", str(dotfiles_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("git init timed out after 30 seconds")
+
     if result.returncode != 0:
         message = result.stderr.strip() or result.stdout.strip() or "unknown git error"
         raise RuntimeError(f"Failed to initialize Git repository: {message}")
@@ -104,8 +137,17 @@ def ensure_git_repo(dotfiles_dir: Path) -> None:
 
 
 def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
-    """Copy files into categorized directories and return installation mappings."""
+    """Copy files into categorized directories and return installation mappings.
+
+    Args:
+        dotfiles_dir: Target repository directory
+        files: List of file paths to copy
+
+    Returns:
+        List of file mappings
+    """
     mappings: List[FileMapping] = []
+    seen_sources: Set[str] = set()
 
     # Load rules once for efficiency
     category_rules = get_category_rules()
@@ -114,6 +156,14 @@ def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
 
     for file_str in files:
         src = Path(file_str).expanduser().resolve()
+
+        # Skip duplicates
+        src_str = str(src)
+        if src_str in seen_sources:
+            logger.warning("Skipping duplicate file: %s", src)
+            continue
+        seen_sources.add(src_str)
+
         if not src.exists():
             print(f"Warning: {src} not found, skipping")
             continue
@@ -132,12 +182,16 @@ def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
         dest = dotfiles_dir / repo_rel
         dest.parent.mkdir(parents=True, exist_ok=True)
 
-        if is_dir:
-            if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(src, dest)
-        else:
-            shutil.copy2(src, dest)
+        try:
+            if is_dir:
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.copytree(src, dest)
+            else:
+                shutil.copy2(src, dest)
+        except (OSError, PermissionError) as e:
+            print(f"Warning: Failed to copy {src}: {e}")
+            continue
 
         mappings.append(
             FileMapping(
@@ -181,8 +235,18 @@ def main() -> None:
     setup_logging(args.verbose)
     dotfiles_dir = Path(args.repo_dir).expanduser().resolve()
 
-    ensure_repo_dir(dotfiles_dir)
-    ensure_git_repo(dotfiles_dir)
+    try:
+        ensure_repo_dir(dotfiles_dir)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
+    try:
+        ensure_git_repo(dotfiles_dir)
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
     ensure_gitignore(dotfiles_dir)
 
     manifest_path = dotfiles_dir / "manifest.json"

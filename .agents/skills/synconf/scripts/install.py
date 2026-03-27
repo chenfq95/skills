@@ -6,12 +6,15 @@ then copies them from the repo to the local machine, backing up existing files.
 """
 
 import json
+import logging
 import platform
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+# Set up logging
+logger = logging.getLogger("synconf.install")
 
 DOTFILES_DIR = Path(__file__).resolve().parent.parent
 BACKUP_DIR = Path.home() / ".synconf-backup" / datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -78,11 +81,25 @@ def render_text(text: str) -> str:
 
 
 def contains_placeholders(path: Path) -> bool:
-    """Check if a file or directory contains home path placeholders."""
-    if path.is_dir():
-        return any(contains_placeholders(child) for child in path.rglob("*") if child.is_file())
-    text = read_text_file(path)
-    return bool(text and (HOME_TOKEN in text or HOME_POSIX_TOKEN in text))
+    """Check if a file or directory contains home path placeholders.
+
+    Args:
+        path: Path to check
+
+    Returns:
+        True if placeholders found, False otherwise
+    """
+    try:
+        if path.is_dir():
+            for child in path.rglob("*"):
+                if child.is_file():
+                    if contains_placeholders(child):
+                        return True
+            return False
+        text = read_text_file(path)
+        return bool(text and (HOME_TOKEN in text or HOME_POSIX_TOKEN in text))
+    except (OSError, PermissionError):
+        return False
 
 
 def remove_path(path: Path) -> None:
@@ -93,16 +110,45 @@ def remove_path(path: Path) -> None:
         shutil.rmtree(path)
 
 
-def backup_existing(dst: Path) -> None:
-    """Backup existing local config before overwriting."""
-    if not dst.exists() and not dst.is_symlink():
-        return
+def backup_existing(dst: Path) -> bool:
+    """Backup existing local config before overwriting.
 
-    backup_target = BACKUP_DIR / dst.relative_to(Path.home())
+    Args:
+        dst: Destination path to backup
+
+    Returns:
+        True if backup succeeded or wasn't needed, False on failure
+    """
+    if not dst.exists() and not dst.is_symlink():
+        return True
+
+    # Check if dst is within home directory
+    home = Path.home()
+    try:
+        rel_path = dst.relative_to(home)
+    except ValueError:
+        # dst is not under home - use absolute path as relative
+        logger.warning("Backup target %s is not under home directory", dst)
+        # Use a safe fallback path
+        rel_path = Path("_external") / dst.name
+
+    backup_target = BACKUP_DIR / rel_path
     backup_target.parent.mkdir(parents=True, exist_ok=True)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(dst), str(backup_target))
-    print(f"Backed up {dst} -> {backup_target}")
+
+    try:
+        # Use copy for cross-filesystem safety, then remove original
+        if dst.is_dir() and not dst.is_symlink():
+            shutil.copytree(dst, backup_target)
+            shutil.rmtree(dst)
+        else:
+            shutil.copy2(dst, backup_target)
+            dst.unlink()
+        print(f"Backed up {dst} -> {backup_target}")
+        return True
+    except (OSError, PermissionError) as e:
+        print(f"Warning: Failed to backup {dst}: {e}")
+        return False
 
 
 def copy_path(src: Path, dst: Path) -> None:
@@ -140,29 +186,62 @@ def copy_with_render(src: Path, dst: Path) -> None:
         dst.write_text(render_text(text), encoding="utf-8")
 
 
-def install_file(src: Path, dst: Path, is_dir: bool) -> None:
-    """Copy a repo config into the local machine."""
+def install_file(src: Path, dst: Path, is_dir: bool) -> bool:
+    """Copy a repo config into the local machine.
+
+    Args:
+        src: Source path in repo
+        dst: Destination path on local machine
+        is_dir: Whether source is a directory
+
+    Returns:
+        True if installed successfully, False on failure
+    """
     if dst.exists() or dst.is_symlink():
-        backup_existing(dst)
-    dst.parent.mkdir(parents=True, exist_ok=True)
+        if not backup_existing(dst):
+            print(f"Warning: Skipping {dst} - backup failed")
+            return False
 
-    if contains_placeholders(src):
-        copy_with_render(src, dst)
-        print(f"Rendered {src} -> {dst}")
-        return
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        print(f"Warning: Cannot create parent directory for {dst}: {e}")
+        return False
 
-    copy_path(src, dst)
-    print(f"Copied {src} -> {dst}")
+    try:
+        if contains_placeholders(src):
+            copy_with_render(src, dst)
+            print(f"Rendered {src} -> {dst}")
+            return True
+
+        copy_path(src, dst)
+        print(f"Copied {src} -> {dst}")
+        return True
+    except (OSError, PermissionError) as e:
+        print(f"Warning: Failed to install {src} -> {dst}: {e}")
+        return False
 
 
-def load_manifest() -> List[Dict[str, object]]:
-    """Load manifest.json and return the files list."""
+def load_manifest() -> List[Dict[str, Any]]:
+    """Load manifest.json and return the files list.
+
+    Returns:
+        List of file entries from manifest
+    """
     if not MANIFEST_PATH.exists():
         return []
     try:
         payload = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-        return payload.get("files", [])
-    except json.JSONDecodeError:
+        files = payload.get("files", [])
+        if not isinstance(files, list):
+            logger.warning("Manifest 'files' is not a list")
+            return []
+        return files
+    except json.JSONDecodeError as e:
+        logger.warning("Failed to parse manifest: %s", e)
+        return []
+    except OSError as e:
+        logger.warning("Failed to read manifest: %s", e)
         return []
 
 
@@ -191,16 +270,41 @@ def main() -> None:
         print("No configs for this platform found in manifest.json.")
         return
 
+    installed_count = 0
+    skipped_count = 0
+
     for entry in supported:
-        src = DOTFILES_DIR / path_from_rel(entry["repo_rel"])
-        dst = Path.home() / path_from_rel(entry["home_rel"])
-        if src.exists():
-            install_file(src, dst, entry["is_dir"])
-        else:
+        # Safely get required fields with defaults
+        repo_rel = entry.get("repo_rel")
+        home_rel = entry.get("home_rel")
+        is_dir = entry.get("is_dir", False)
+        software = entry.get("software", "Unknown")
+
+        # Validate required fields
+        if not repo_rel:
+            print(f"Warning: Entry for {software} missing repo_rel, skipping")
+            skipped_count += 1
+            continue
+        if not home_rel:
+            print(f"Warning: Entry for {software} missing home_rel, skipping")
+            skipped_count += 1
+            continue
+
+        src = DOTFILES_DIR / path_from_rel(str(repo_rel))
+        dst = Path.home() / path_from_rel(str(home_rel))
+
+        if not src.exists():
             print(f"Warning: {src} not found, skipping")
+            skipped_count += 1
+            continue
+
+        if install_file(src, dst, bool(is_dir)):
+            installed_count += 1
+        else:
+            skipped_count += 1
 
     print()
-    print("Dotfiles installed successfully!")
+    print(f"Dotfiles installation complete: {installed_count} installed, {skipped_count} skipped")
     if BACKUP_DIR.exists():
         print(f"Backup of old files saved to: {BACKUP_DIR}")
 

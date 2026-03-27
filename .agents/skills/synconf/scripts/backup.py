@@ -13,11 +13,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from common import (
+    DiskSpaceError,
     EDITOR_EXCLUDE_DIRS,
     HOME,
     ManifestEntry,
     OperationRecord,
+    PathValidationError,
     append_pending_merge,
+    check_disk_space,
     choose_conflict_action,
     choose_conflict_decisions,
     choose_conflict_plan,
@@ -32,9 +35,12 @@ from common import (
     ensure_repo_scaffold,
     format_platform_name,
     get_current_platform,
+    get_directory_size,
     get_platform_rules,
+    is_safe_symlink,
     load_manifest,
     load_state,
+    logger,
     manifest_entry_identity,
     normalize_text,
     path_from_rel,
@@ -46,7 +52,9 @@ from common import (
     read_text_file,
     resolve_conflict_action,
     resolve_repo_dir,
+    safe_remove_tree,
     save_manifest,
+    validate_path_within_home,
 )
 
 
@@ -104,10 +112,38 @@ def ignore_unsupported_entries(root: str, names: List[str]) -> List[str]:
 
 
 def copy_entry(src: Path, dest: Path, is_dir: bool) -> None:
-    """Copy local config to repo with placeholder normalization."""
+    """Copy local config to repo with placeholder normalization.
+
+    Args:
+        src: Source path (local config)
+        dest: Destination path (repo location)
+        is_dir: Whether source is a directory
+
+    Raises:
+        DiskSpaceError: If insufficient disk space
+        OSError: If copy fails
+    """
+    # Check disk space before copying
     if is_dir:
-        if dest.exists():
-            shutil.rmtree(dest)
+        required_size = get_directory_size(src)
+    else:
+        try:
+            required_size = src.stat().st_size
+        except OSError:
+            required_size = 0
+
+    try:
+        check_disk_space(dest, required_size)
+    except DiskSpaceError as e:
+        logger.error("Disk space check failed: %s", e)
+        raise
+
+    if is_dir:
+        # Safely remove existing destination
+        if dest.exists() or dest.is_symlink():
+            if not safe_remove_tree(dest, follow_symlinks=False):
+                raise OSError(f"Cannot safely remove existing destination: {dest}")
+
         shutil.copytree(
             src,
             dest,
@@ -162,7 +198,17 @@ def choose_entries(
 
 
 def matches_only_filter(entry: ManifestEntry, only_filters: List[str]) -> bool:
-    """Return True when an entry matches any explicit filter."""
+    """Return True when an entry matches any explicit filter.
+
+    Uses exact matching to avoid false positives from substring matching.
+
+    Args:
+        entry: Manifest entry to check
+        only_filters: List of filter strings
+
+    Returns:
+        True if entry matches any filter
+    """
     software = entry_software(entry).lower()
     home_rel = entry_home_rel(entry).lower()
     repo_rel = entry_repo_rel(entry).lower()
@@ -171,7 +217,13 @@ def matches_only_filter(entry: ManifestEntry, only_filters: List[str]) -> bool:
         value = raw_filter.strip().lower()
         if not value:
             continue
-        if value in {software, home_rel, repo_rel}:
+        # Exact match on any of the three identifiers
+        if value == software or value == home_rel or value == repo_rel:
+            return True
+        # Also allow matching on the filename part for convenience
+        if home_rel and value == Path(home_rel).name.lower():
+            return True
+        if repo_rel and value == Path(repo_rel).name.lower():
             return True
     return False
 
@@ -183,8 +235,16 @@ def filter_entries(
 ) -> Tuple[List[ManifestEntry], List[ManifestEntry]]:
     """Restrict entries to an explicit subset when requested.
 
+    Args:
+        entries: All manifest entries
+        only_filters: Comma-separated filter string
+        last_selected_repo_rels: Previous selection from state
+
     Returns:
         Tuple of (filtered_entries, platform_skipped_entries)
+
+    Raises:
+        ValueError: If filters match nothing
     """
     # First filter by platform
     current_platform = get_current_platform()
@@ -215,7 +275,12 @@ def filter_entries(
     if not only_filters:
         return entries, platform_skipped
 
+    # Parse and validate filters
     requested = [item.strip() for item in only_filters.split(",") if item.strip()]
+    if not requested:
+        # All filters were empty/whitespace
+        return entries, platform_skipped
+
     chosen = [entry for entry in entries if matches_only_filter(entry, requested)]
 
     if not chosen:
@@ -329,10 +394,35 @@ def main() -> None:
 
     for entry in selected_entries:
         software = entry_software(entry)
-        src = HOME / path_from_rel(entry_home_rel(entry))
-        dest = repo_dir / path_from_rel(entry_repo_rel(entry))
+        home_rel = entry_home_rel(entry)
+        repo_rel = entry_repo_rel(entry)
+
+        # Validate paths before processing
+        try:
+            validate_path_within_home(path_from_rel(home_rel))
+        except PathValidationError as e:
+            print(f"Warning: {software} - {e}")
+            continue
+
+        src = HOME / path_from_rel(home_rel)
+        dest = repo_dir / path_from_rel(repo_rel)
         is_dir = entry_is_dir(entry)
         target_exists_before = dest.exists() or dest.is_symlink()
+
+        # Check for broken symlinks
+        if src.is_symlink() and not is_safe_symlink(src):
+            print(f"Warning: {src} is a broken or circular symlink, skipping")
+            summary["missing"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(src),
+                    "target": str(dest),
+                    "target_exists_before": target_exists_before,
+                    "action": "skip-broken-symlink",
+                }
+            )
+            continue
 
         if not src.exists():
             print(f"Warning: {src} not found, skipping")
@@ -425,18 +515,44 @@ def main() -> None:
                     )
                     continue
 
-        copy_entry(src, dest, is_dir)
-        print(f"Backed up {src} -> {entry_repo_rel(entry)}")
-        summary["backed_up"].append(software)
-        operations.append(
-            {
-                "software": software,
-                "source": str(src),
-                "target": str(dest),
-                "target_exists_before": target_exists_before,
-                "action": "overwrite" if target_exists_before else "create",
-            }
-        )
+        try:
+            copy_entry(src, dest, is_dir)
+            print(f"Backed up {src} -> {repo_rel}")
+            summary["backed_up"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(src),
+                    "target": str(dest),
+                    "target_exists_before": target_exists_before,
+                    "action": "overwrite" if target_exists_before else "create",
+                }
+            )
+        except DiskSpaceError as e:
+            print(f"Error: {e}")
+            print(f"Skipped {software} due to insufficient disk space")
+            summary["skipped"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(src),
+                    "target": str(dest),
+                    "target_exists_before": target_exists_before,
+                    "action": "skip-disk-space",
+                }
+            )
+        except (OSError, PermissionError) as e:
+            print(f"Error copying {software}: {e}")
+            summary["skipped"].append(software)
+            operations.append(
+                {
+                    "software": software,
+                    "source": str(src),
+                    "target": str(dest),
+                    "target_exists_before": target_exists_before,
+                    "action": "skip-copy-error",
+                }
+            )
 
     print()
     print("Backup complete!")
