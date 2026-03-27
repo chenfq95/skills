@@ -18,7 +18,17 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Mapping, Optional, Sequence, Tuple, TypedDict
+from typing import (
+    Any,
+    Dict,
+    Generator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypedDict,
+)
 
 # Configure module-level logger
 logger = logging.getLogger("synconf")
@@ -609,7 +619,9 @@ def path_from_rel(path_str: str) -> Path:
 # -----------------------------------------------------------------------------
 
 
-def read_text_file(path: Path, max_size: int = MAX_FILE_SIZE_FOR_FULL_READ) -> Optional[str]:
+def read_text_file(
+    path: Path, max_size: int = MAX_FILE_SIZE_FOR_FULL_READ
+) -> Optional[str]:
     """Read a text file, returning None if not readable as UTF-8.
 
     Args:
@@ -706,7 +718,9 @@ def infer_software(
     return path.name or path.as_posix()
 
 
-def slugify_path_component(value: str, max_length: int = MAX_PATH_COMPONENT_LENGTH) -> str:
+def slugify_path_component(
+    value: str, max_length: int = MAX_PATH_COMPONENT_LENGTH
+) -> str:
     """Convert a user-facing label into a stable repo path component.
 
     Args:
@@ -1146,10 +1160,8 @@ def save_merge_note(
     """Save merge instructions to a markdown file."""
     merge_notes_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    note_path = (
-        merge_notes_dir
-        / f"{timestamp}-{direction}-{entry_software(entry).lower().replace(' ', '-')}.md"
-    )
+    software_slug = entry_software(entry).lower().replace(' ', '-')
+    note_path = merge_notes_dir / f"{timestamp}-{direction}-{software_slug}.md"
     note_path.write_text(
         "\n".join(
             [
@@ -1640,7 +1652,9 @@ def get_directory_size(path: Path, max_files: int = 10000) -> int:
     return total
 
 
-def check_disk_space(dest: Path, required_bytes: int, safety_margin: float = 1.1) -> None:
+def check_disk_space(
+    dest: Path, required_bytes: int, safety_margin: float = 1.1
+) -> None:
     """Check if there is sufficient disk space for an operation.
 
     Args:

@@ -92,7 +92,8 @@ def ensure_repo_dir(dotfiles_dir: Path) -> None:
     if dotfiles_dir.exists():
         if not dotfiles_dir.is_dir():
             raise ValueError(
-                f"Cannot create repository: {dotfiles_dir} exists but is not a directory"
+                f"Cannot create repository: "
+                f"{dotfiles_dir} exists but is not a directory"
             )
         return
     dotfiles_dir.mkdir(parents=True, exist_ok=True)
@@ -212,7 +213,7 @@ def copy_files(dotfiles_dir: Path, files: List[str]) -> List[FileMapping]:
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Initialize a synconf repository with static scripts and configuration"
+        description="Initialize a synconf repository with scripts and configuration"
     )
     parser.add_argument(
         "files",
@@ -277,10 +278,13 @@ def main() -> None:
     print("Detailed action checklist:")
     print(f"  1. Review the repository contents in {dotfiles_dir}")
     print(
-        f"  2. Scan configs, confirm the subset you want, then run 'python3 {dotfiles_dir}/scripts/manage.py init --config <selected-json> --mode merge'"
+        f"  2. Scan configs, confirm the subset you want, then run:\n"
+        f"     python3 {dotfiles_dir}/scripts/manage.py init "
+        f"--config <json> --mode merge"
     )
     print(
-        f"  3. Run 'python3 {dotfiles_dir}/scripts/backup.py' to copy the selected configs into the synconf repo"
+        f"  3. Run 'python3 {dotfiles_dir}/scripts/backup.py' "
+        "to copy configs into the synconf repo"
     )
     print("  4. If any conflicts require manual work, review merge notes in the repo")
     print(
@@ -289,10 +293,14 @@ def main() -> None:
     )
     print(f"  6. Review pending changes with 'git -C {dotfiles_dir} status'")
     print(
-        f"  7. Commit with 'git -C {dotfiles_dir} add -A && git -C {dotfiles_dir} commit -m \"Initial synconf\"'"
+        f"  7. Commit with:\n"
+        f"     git -C {dotfiles_dir} add -A && "
+        f"git -C {dotfiles_dir} commit -m \"Initial synconf\""
     )
     print(
-        f"  8. Optional: add a remote and push with 'git -C {dotfiles_dir} remote add origin <your-repo-url>' then 'git -C {dotfiles_dir} push -u origin main'"
+        f"  8. Optional: add a remote and push with:\n"
+        f"     git -C {dotfiles_dir} remote add origin <your-repo-url>\n"
+        f"     git -C {dotfiles_dir} push -u origin main"
     )
 
 

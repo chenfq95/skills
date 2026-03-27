@@ -2,12 +2,19 @@
 """Scan installed skills and optionally export selected skills to YAML."""
 
 import json
+import logging
 import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Configure logging
+logger = logging.getLogger("skills_sync")
+
 REGISTRY_SOURCE_TYPES = {"registry", "marketplace"}
+
+# Max symlink resolution depth to prevent infinite loops
+MAX_SYMLINK_DEPTH = 40
 
 
 def get_home_dir() -> Path:
@@ -16,12 +23,33 @@ def get_home_dir() -> Path:
 
 
 def load_lock_file(lock_path: Path) -> Dict[str, Any]:
-    """Load skill-lock.json if it exists."""
+    """Load skill-lock.json if it exists.
+
+    Args:
+        lock_path: Path to the lock file
+
+    Returns:
+        Parsed JSON data or empty structure on error
+    """
     if not lock_path.exists():
         return {"skills": {}}
 
-    with open(lock_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        content = lock_path.read_text(encoding="utf-8")
+        data = json.loads(content)
+        if not isinstance(data, dict):
+            logger.warning("Lock file %s is not a JSON object", lock_path)
+            return {"skills": {}}
+        return data
+    except json.JSONDecodeError as e:
+        logger.warning("Failed to parse lock file %s: %s", lock_path, e)
+        return {"skills": {}}
+    except OSError as e:
+        logger.warning("Failed to read lock file %s: %s", lock_path, e)
+        return {"skills": {}}
+    except UnicodeDecodeError as e:
+        logger.warning("Lock file %s is not valid UTF-8: %s", lock_path, e)
+        return {"skills": {}}
 
 
 def normalize_source_type(source_type: str) -> str:
@@ -35,25 +63,78 @@ def normalize_source_type(source_type: str) -> str:
     return source_type.lower()
 
 
+def is_safe_symlink(path: Path, max_depth: int = MAX_SYMLINK_DEPTH) -> bool:
+    """Check if a symlink is safe to follow (no loops, exists).
+
+    Args:
+        path: Path to check
+        max_depth: Maximum symlink resolution depth
+
+    Returns:
+        True if safe, False if broken or circular
+    """
+    try:
+        seen = set()
+        current = path
+        for _ in range(max_depth):
+            if not current.is_symlink():
+                return current.exists()
+            real = current.resolve()
+            if real in seen:
+                return False  # Circular symlink
+            seen.add(real)
+            current = real
+        return False  # Too deep
+    except (OSError, ValueError):
+        return False
+
+
 def scan_skills_directory(skills_dir: Path) -> Dict[str, Dict[str, Any]]:
-    """Scan a skills directory and return skill metadata keyed by skill name."""
+    """Scan a skills directory and return skill metadata keyed by skill name.
+
+    Args:
+        skills_dir: Directory containing skill subdirectories
+
+    Returns:
+        Dict mapping skill names to their metadata
+    """
     skills: Dict[str, Dict[str, Any]] = {}
     if not skills_dir.exists():
         return skills
 
-    for item in skills_dir.iterdir():
-        if item.is_dir() or item.is_symlink():
-            skill_md = item / "SKILL.md"
-            try:
-                resolved = item.resolve()
-                if skill_md.exists() or (resolved / "SKILL.md").exists():
-                    skills[item.name] = {
-                        "path": str(item),
-                        "resolved_path": str(resolved),
-                        "is_symlink": item.is_symlink(),
-                    }
-            except (OSError, ValueError):
-                pass
+    try:
+        items = list(skills_dir.iterdir())
+    except PermissionError as e:
+        logger.warning("Permission denied reading %s: %s", skills_dir, e)
+        return skills
+    except OSError as e:
+        logger.warning("Error reading %s: %s", skills_dir, e)
+        return skills
+
+    for item in items:
+        # Skip hidden files and validate name
+        if not item.name or item.name.startswith("."):
+            continue
+
+        if not (item.is_dir() or item.is_symlink()):
+            continue
+
+        # Check symlink safety
+        if item.is_symlink() and not is_safe_symlink(item):
+            logger.warning("Skipping broken or circular symlink: %s", item)
+            continue
+
+        skill_md = item / "SKILL.md"
+        try:
+            resolved = item.resolve()
+            if skill_md.exists() or (resolved / "SKILL.md").exists():
+                skills[item.name] = {
+                    "path": str(item),
+                    "resolved_path": str(resolved),
+                    "is_symlink": item.is_symlink(),
+                }
+        except (OSError, ValueError) as e:
+            logger.debug("Error resolving %s: %s", item, e)
 
     return skills
 
@@ -125,7 +206,15 @@ def parse_skill_selection(
     selection: str,
     sorted_skills: List[Dict[str, Any]],
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
-    """Parse comma-separated selection by index or skill name."""
+    """Parse comma-separated selection by index or skill name.
+
+    Args:
+        selection: User input string with indices or names
+        sorted_skills: List of available skills
+
+    Returns:
+        Tuple of (selected skills, invalid tokens)
+    """
     tokens = [token.strip() for token in selection.split(",") if token.strip()]
     if not tokens:
         return [], []
@@ -140,10 +229,14 @@ def parse_skill_selection(
 
     for token in tokens:
         skill = None
-        if token.isdigit():
+        # Only treat as index if it's a positive integer
+        if token.isdigit() and token != "0":
             index = int(token)
             if 1 <= index <= len(sorted_skills):
                 skill = sorted_skills[index - 1]
+            else:
+                invalid.append(f"{token} (out of range 1-{len(sorted_skills)})")
+                continue
         else:
             skill = name_map.get(token)
 
@@ -163,13 +256,24 @@ def parse_skill_selection(
 def prompt_skill_selection(
     skills: Dict[str, Dict[str, Any]],
 ) -> Optional[List[Dict[str, Any]]]:
-    """Prompt the user to choose which scanned skills to export."""
+    """Prompt the user to choose which scanned skills to export.
+
+    Args:
+        skills: Dict of available skills
+
+    Returns:
+        List of selected skills, or None if cancelled
+    """
     sorted_skills = get_sorted_skills(skills)
     if not sorted_skills:
         print("No skills found to export.", file=sys.stderr)
         return None
 
-    while True:
+    max_attempts = 10  # Prevent infinite loops
+    attempts = 0
+
+    while attempts < max_attempts:
+        attempts += 1
         print("\nDiscovered skills:")
         for index, skill in enumerate(sorted_skills, start=1):
             source = skill["source"] or "n/a"
@@ -181,18 +285,24 @@ def prompt_skill_selection(
 
         print("\nSelect the skills to export to YAML.")
         print(
-            "Enter comma-separated numbers or skill names, or 'all' for every discovered skill."
+            "Enter comma-separated numbers or skill names, "
+            "or 'all' for every discovered skill."
         )
+        print("Enter 'q' or empty to cancel.")
         try:
             selection = input("> ").strip()
         except EOFError:
             print(
-                "Interactive selection requires a terminal. Use --skills for non-interactive selection.",
+                "\nNon-interactive mode detected. "
+                "Use --skills for non-interactive selection.",
                 file=sys.stderr,
             )
             return None
+        except KeyboardInterrupt:
+            print("\nSelection cancelled.", file=sys.stderr)
+            return None
 
-        if not selection:
+        if not selection or selection.lower() in ("q", "quit", "exit"):
             print("Selection cancelled. No YAML file generated.", file=sys.stderr)
             return None
 
@@ -213,11 +323,8 @@ def prompt_skill_selection(
             confirm = (
                 input("Generate skills.yaml with these skills? [y/N]: ").strip().lower()
             )
-        except EOFError:
-            print(
-                "Interactive confirmation requires a terminal. Use --skills for non-interactive selection.",
-                file=sys.stderr,
-            )
+        except (EOFError, KeyboardInterrupt):
+            print("\nSelection cancelled.", file=sys.stderr)
             return None
 
         if confirm in {"y", "yes"}:
@@ -225,8 +332,8 @@ def prompt_skill_selection(
 
         try:
             retry = input("Reselect skills? [Y/n]: ").strip().lower()
-        except EOFError:
-            print("Selection cancelled. No YAML file generated.", file=sys.stderr)
+        except (EOFError, KeyboardInterrupt):
+            print("\nSelection cancelled. No YAML file generated.", file=sys.stderr)
             return None
 
         if retry in {"", "y", "yes"}:
@@ -234,3 +341,6 @@ def prompt_skill_selection(
 
         print("Selection cancelled. No YAML file generated.", file=sys.stderr)
         return None
+
+    print("Too many attempts. Selection cancelled.", file=sys.stderr)
+    return None

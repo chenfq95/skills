@@ -2,18 +2,16 @@
 """Manage tracked software configs in manifest.json.
 
 Usage:
-    python3 scripts/manage.py list                 # List all tracked software
-    python3 scripts/manage.py init --config '{"files":[...]}' --mode merge  # Merge selected JSON entries
-    python3 scripts/manage.py init --dry-run      # Preview scan without changes
-    python3 scripts/manage.py init --mode overwrite  # Replace existing manifest
-    python3 scripts/manage.py init --config '{"files":[...]}'  # From JSON string
-    python3 scripts/manage.py select               # Review tracked configs and remove unwanted ones
-    python3 scripts/manage.py prune 2,4            # Remove entries 2 and 4
+    python3 scripts/manage.py list             # List all tracked software
+    python3 scripts/manage.py init --config '{"files":[...]}' --mode merge
+    python3 scripts/manage.py init --dry-run   # Preview scan without changes
+    python3 scripts/manage.py init --mode overwrite  # Replace manifest
+    python3 scripts/manage.py select           # Review and remove configs
+    python3 scripts/manage.py prune 2,4        # Remove entries 2 and 4
 """
 
 import argparse
 import json
-import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -25,11 +23,9 @@ from common import (
     detect_supported_platforms_from_entry,
     format_platform_name,
     get_current_platform,
-    get_file_lock,
     get_platform_rules,
     load_manifest,
     load_state,
-    logger,
     manifest_entry_identity,
     prompt_yes_no,
     resolve_repo_dir,
@@ -278,7 +274,9 @@ def parse_remove_indices(raw_value: str, total_count: int) -> List[int]:
             if end > total_count:
                 raise ValueError(f"Range end {end} exceeds total count {total_count}")
             if start > end:
-                raise ValueError(f"Range start > end: {value} (did you mean {end}-{start}?)")
+                raise ValueError(
+                    f"Range start > end: {value} (did you mean {end}-{start}?)"
+                )
 
             for i in range(start, end + 1):
                 if i not in indices:
@@ -427,9 +425,9 @@ def prune_configs(
     print("Entries to remove:")
     for index, entry in enumerate(supported, start=1):
         if index in remove_set:
-            print(
-                f"  {index}. {entry.get('software', 'Unknown')} ({entry.get('category', 'other')})"
-            )
+            software = entry.get('software', 'Unknown')
+            category = entry.get('category', 'other')
+            print(f"  {index}. {software} ({category})")
             to_remove.append(entry)
         else:
             to_keep.append(entry)
@@ -478,7 +476,8 @@ def _apply_removals(
             status += ", software dir removed"
             removed_software_dirs += 1
         print(
-            f"  - {entry.get('software', 'Unknown')}: {entry.get('repo_rel', '')} ({status})"
+            f"  - {entry.get('software', 'Unknown')}: "
+            f"{entry.get('repo_rel', '')} ({status})"
         )
         if removed:
             removed_backups += 1
@@ -486,7 +485,8 @@ def _apply_removals(
     print(
         "Updated manifest: "
         f"kept {len(to_keep)}, removed {len(to_remove)}, "
-        f"cleaned {removed_backups} backups, removed {removed_software_dirs} software directories, "
+        f"cleaned {removed_backups} backups, "
+        f"removed {removed_software_dirs} software directories, "
         f"removed {removed_dirs} empty directories"
     )
 
@@ -494,9 +494,9 @@ def _apply_removals(
         print()
         print("Remaining entries:")
         for index, entry in enumerate(to_keep, start=1):
-            print(
-                f"  {index}. {entry.get('software', 'Unknown')} ({entry.get('category', 'other')})"
-            )
+            software = entry.get('software', 'Unknown')
+            category = entry.get('category', 'other')
+            print(f"  {index}. {software} ({category})")
 
 
 def main() -> None:
@@ -589,7 +589,9 @@ def main() -> None:
             )
         except ValueError as err:
             parser.error(str(err))
-        prune_configs(manifest, state, repo_dir, manifest_path, remove_indices, auto_yes)
+        prune_configs(
+            manifest, state, repo_dir, manifest_path, remove_indices, auto_yes
+        )
         return
 
     if args.command == "list":

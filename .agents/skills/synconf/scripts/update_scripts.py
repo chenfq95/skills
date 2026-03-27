@@ -21,11 +21,10 @@ from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional
 
 from common import (
-    Colors,
-    DEFAULT_REPO_DIR,
     RUNTIME_REPO_FILES,
     SCRIPTS_DIR,
     TEMPLATES_DIR,
+    Colors,
     logger,
     prompt_yes_no,
     resolve_repo_dir,
@@ -224,7 +223,10 @@ def copy_scripts(
                 except OSError:
                     pass  # Windows doesn't support chmod
             action = "Copied" if not status.target_exists else "Updated"
-            print(f"  {Colors.GREEN}{Colors.check()}{Colors.RESET} {action}: {status.name}")
+            print(
+                f"  {Colors.GREEN}{Colors.check()}{Colors.RESET} "
+                f"{action}: {status.name}"
+            )
             counts["copied"] += 1
         except (OSError, PermissionError) as e:
             print(f"  {Colors.RED}Failed{Colors.RESET}: {status.name} - {e}")
@@ -278,9 +280,15 @@ def update_templates(
         try:
             shutil.copy2(source, target)
             if target.exists():
-                print(f"  {Colors.GREEN}{Colors.check()}{Colors.RESET} Updated: {target_name}")
+                print(
+                    f"  {Colors.GREEN}{Colors.check()}{Colors.RESET} "
+                    f"Updated: {target_name}"
+                )
             else:
-                print(f"  {Colors.GREEN}{Colors.check()}{Colors.RESET} Copied: {target_name}")
+                print(
+                    f"  {Colors.GREEN}{Colors.check()}{Colors.RESET} "
+                    f"Copied: {target_name}"
+                )
             updated += 1
         except (OSError, PermissionError) as e:
             print(f"  {Colors.RED}Failed{Colors.RESET}: {target_name} - {e}")
@@ -395,7 +403,10 @@ def main() -> None:
     else:
         print(f"Update complete: {copy_counts['copied']} files updated")
         if copy_counts["failed"] > 0:
-            print(f"{Colors.RED}Warning: {copy_counts['failed']} files failed to update{Colors.RESET}")
+            print(
+                f"{Colors.RED}Warning: {copy_counts['failed']} files "
+                f"failed to update{Colors.RESET}"
+            )
         if backup_path:
             print(f"Backup saved to: {backup_path}")
 

@@ -2,14 +2,15 @@
 """Restore skills from a skills.yaml file or from a sibling skills.yaml."""
 
 import argparse
+import logging
 import os
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 yaml = None
 
@@ -19,6 +20,11 @@ try:
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
+
+logger = logging.getLogger("skills_sync")
+
+# Command execution timeout in seconds
+COMMAND_TIMEOUT = 300
 
 
 @dataclass
@@ -44,7 +50,16 @@ def scan_skills_directory(skills_dir: Path) -> List[str]:
     if not skills_dir.exists():
         return names
 
-    for item in skills_dir.iterdir():
+    try:
+        items = list(skills_dir.iterdir())
+    except PermissionError as e:
+        logger.warning("Permission denied reading %s: %s", skills_dir, e)
+        return names
+    except OSError as e:
+        logger.warning("Error reading %s: %s", skills_dir, e)
+        return names
+
+    for item in items:
         if not (item.is_dir() or item.is_symlink()):
             continue
         try:
@@ -80,7 +95,11 @@ def parse_yaml_simple(content: str) -> Dict[str, Any]:
             continue
 
         if stripped.startswith("version:"):
-            result["version"] = int(stripped.split(":", 1)[1].strip())
+            try:
+                result["version"] = int(stripped.split(":", 1)[1].strip())
+            except ValueError:
+                logger.warning("Invalid version format, defaulting to 1")
+                result["version"] = 1
             continue
 
         if stripped.startswith("- name:"):
@@ -129,15 +148,41 @@ def load_from_yaml(yaml_path: Path) -> List[Dict[str, Any]]:
         print(f"Error: YAML file not found: {yaml_path}", file=sys.stderr)
         sys.exit(1)
 
-    content = yaml_path.read_text(encoding="utf-8")
-    if HAS_YAML:
-        assert yaml is not None
-        data = yaml.safe_load(content)
-    else:
-        data = parse_yaml_simple(content)
+    try:
+        content = yaml_path.read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"Error: Failed to read YAML file: {e}", file=sys.stderr)
+        sys.exit(1)
+    except UnicodeDecodeError as e:
+        print(f"Error: YAML file is not valid UTF-8: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    skills = data.get("skills", []) if data else []
-    return [skill for skill in skills if skill.get("enabled", True)]
+    try:
+        if HAS_YAML:
+            assert yaml is not None
+            data = yaml.safe_load(content)
+        else:
+            data = parse_yaml_simple(content)
+    except Exception as e:
+        print(f"Error: Failed to parse YAML: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if data is None:
+        return []
+
+    if not isinstance(data, dict):
+        print("Error: YAML root must be a mapping", file=sys.stderr)
+        sys.exit(1)
+
+    skills = data.get("skills", [])
+    if not isinstance(skills, list):
+        print("Error: 'skills' must be a list", file=sys.stderr)
+        sys.exit(1)
+
+    return [
+        skill for skill in skills
+        if isinstance(skill, dict) and skill.get("enabled", True)
+    ]
 
 
 def check_npx_available() -> bool:
@@ -153,11 +198,14 @@ def run_command(cmd: List[str], description: str) -> bool:
     print("=" * 60)
 
     try:
-        result = subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False, timeout=COMMAND_TIMEOUT)
         if result.returncode == 0:
             print(f"[OK] {description} completed")
             return True
         print(f"[FAILED] {description} (exit code: {result.returncode})")
+        return False
+    except subprocess.TimeoutExpired:
+        print(f"[FAILED] {description} timed out after {COMMAND_TIMEOUT}s")
         return False
     except FileNotFoundError:
         print(f"[FAILED] Command not found: {cmd[0]}")
@@ -191,15 +239,22 @@ def run_command_and_verify(
 
 def normalize_registry_source(source: str) -> str:
     """Normalize registry sources to the format expected by the skills CLI."""
+    if not source:
+        return ""
+
     normalized = source.strip()
     if not normalized:
         return ""
 
     if normalized.startswith("http://") or normalized.startswith("https://"):
-        parsed = urlparse(normalized)
-        path = parsed.path.strip("/")
-        if parsed.netloc == "skills.byted.org" and path:
-            return f"{parsed.netloc}/{path}"
+        try:
+            parsed = urlparse(normalized)
+            path = parsed.path.strip("/")
+            if parsed.netloc == "skills.byted.org" and path:
+                return f"{parsed.netloc}/{path}"
+        except ValueError:
+            # Invalid URL, return as-is
+            pass
         return normalized
 
     return normalized
@@ -216,7 +271,8 @@ def install_byted_skills(skills: List[SkillInfo], results: Dict[str, bool]) -> N
 
         if not locator:
             print(
-                f"[FAILED] Byted skill '{skill.name}' is missing both source_url and source."
+                f"[FAILED] Byted skill '{skill.name}' is missing both "
+                "source_url and source."
             )
             results[skill.name] = False
             continue
@@ -327,7 +383,8 @@ def restore_registry_skills(skills: List[SkillInfo], results: Dict[str, bool]) -
             print(f"  - {name}")
             results[name] = False
         print(
-            "Please regenerate skills.yaml with a newer export or fill in source_url manually."
+            "Please regenerate skills.yaml with a newer export "
+            "or fill in source_url manually."
         )
 
     available_skills = [skill for skill in skills if skill.name not in missing_sources]
@@ -418,7 +475,8 @@ def restore_all_skills(skills_to_restore: List[SkillInfo]) -> Dict[str, bool]:
         for name in missing_github_sources:
             print(f"  - {name}")
         print(
-            "Please regenerate skills.yaml with a newer export or fill in source/source_url manually."
+            "Please regenerate skills.yaml with a newer export "
+            "or fill in source/source_url manually."
         )
 
     for repo, skills in github_repos.items():
@@ -492,17 +550,26 @@ def main() -> int:
             )
             return 1
 
-        skill_infos = [
-            SkillInfo(
-                name=skill["name"],
-                source=skill.get("source", ""),
-                source_url=skill.get("source_url", ""),
-                source_type=skill.get("source_type", "local"),
-                skill_path=skill.get("skill_path", ""),
-                plugin_name=skill.get("plugin_name"),
+        skill_infos = []
+        for skill in loaded_skills:
+            name = skill.get("name")
+            if not name or not isinstance(name, str):
+                logger.warning("Skipping skill with missing or invalid name: %s", skill)
+                continue
+            skill_infos.append(
+                SkillInfo(
+                    name=name,
+                    source=skill.get("source", "") or "",
+                    source_url=skill.get("source_url", "") or "",
+                    source_type=skill.get("source_type", "local") or "local",
+                    skill_path=skill.get("skill_path", "") or "",
+                    plugin_name=skill.get("plugin_name"),
+                )
             )
-            for skill in loaded_skills
-        ]
+
+        if not skill_infos:
+            print("Error: No valid skills found in YAML", file=sys.stderr)
+            return 1
 
         results = restore_all_skills(skill_infos)
         print_summary(results)

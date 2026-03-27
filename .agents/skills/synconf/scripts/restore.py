@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Dict, List, Sequence
 
 from common import (
-    DiskSpaceError,
     HOME,
+    DiskSpaceError,
     ManifestEntry,
     OperationRecord,
     PathValidationError,
@@ -24,11 +24,11 @@ from common import (
     collect_restore_conflicts,
     detect_environment,
     detect_supported_platforms_from_entry,
+    entries_equal,
     entry_home_rel,
     entry_is_dir,
     entry_repo_rel,
     entry_software,
-    entries_equal,
     filter_entries_for_platform,
     format_platform_name,
     get_current_platform,
@@ -153,9 +153,8 @@ def choose_entries(
         print(f"{index}. {entry_software(entry)}")
         print(f"   repo:   {repo_path}")
         print(f"   local:  {local_path}")
-        print(
-            f"   repo backup exists: {'yes' if repo_path.exists() or repo_path.is_symlink() else 'no'}"
-        )
+        repo_exists = repo_path.exists() or repo_path.is_symlink()
+        print(f"   repo backup exists: {'yes' if repo_exists else 'no'}")
         print(f"   local config exists: {'yes' if local_exists else 'no'}")
         print("   selection: confirm this software individually")
         if prompt_yes_no(
@@ -315,7 +314,8 @@ def main() -> None:
 
             if entries_equal(repo_path, local_path, is_dir):
                 print(
-                    "No differences detected. Local config already matches the repo backup."
+                    "No differences detected. "
+                    "Local config already matches the repo backup."
                 )
                 summary["unchanged"].append(software)
                 operations.append(

@@ -77,7 +77,8 @@ def read_text_file(path: Path) -> Optional[str]:
 def render_text(text: str) -> str:
     """Replace placeholders with actual home paths."""
     home = Path.home()
-    return text.replace(HOME_POSIX_TOKEN, home.as_posix()).replace(HOME_TOKEN, str(home))
+    result = text.replace(HOME_POSIX_TOKEN, home.as_posix())
+    return result.replace(HOME_TOKEN, str(home))
 
 
 def contains_placeholders(path: Path) -> bool:
@@ -263,7 +264,8 @@ def main() -> None:
         for entry in skipped:
             platforms = entry.get("platforms", [])
             platform_label = ", ".join(str(p).title() for p in platforms)
-            print(f"  - {entry.get('software', 'Unknown')} (supported: {platform_label})")
+            software = entry.get('software', 'Unknown')
+            print(f"  - {software} (supported: {platform_label})")
         print()
 
     if not supported:
@@ -304,7 +306,10 @@ def main() -> None:
             skipped_count += 1
 
     print()
-    print(f"Dotfiles installation complete: {installed_count} installed, {skipped_count} skipped")
+    print(
+        f"Dotfiles installation complete: "
+        f"{installed_count} installed, {skipped_count} skipped"
+    )
     if BACKUP_DIR.exists():
         print(f"Backup of old files saved to: {BACKUP_DIR}")
 

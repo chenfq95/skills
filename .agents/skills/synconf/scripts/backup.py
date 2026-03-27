@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from common import (
-    DiskSpaceError,
     EDITOR_EXCLUDE_DIRS,
     HOME,
+    DiskSpaceError,
     ManifestEntry,
     OperationRecord,
     PathValidationError,
@@ -27,12 +27,12 @@ from common import (
     collect_backup_conflicts,
     detect_environment,
     detect_supported_platforms_from_entry,
+    ensure_repo_scaffold,
+    entries_equal,
     entry_home_rel,
     entry_is_dir,
     entry_repo_rel,
     entry_software,
-    entries_equal,
-    ensure_repo_scaffold,
     format_platform_name,
     get_current_platform,
     get_directory_size,
@@ -302,7 +302,7 @@ def main() -> None:
     parser.add_argument(
         "--only",
         type=str,
-        help="Limit backup to selected manifest entries by software, home_rel, or repo_rel",
+        help="Limit backup to entries by software, home_rel, or repo_rel",
     )
     parser.add_argument(
         "--repo-dir",
@@ -352,7 +352,9 @@ def main() -> None:
         print("Skipping configs that do not support this platform:")
         platform_rules = get_platform_rules()
         for entry in platform_skipped:
-            platforms = detect_supported_platforms_from_entry(entry, platform_rules) or []
+            platforms = detect_supported_platforms_from_entry(
+                entry, platform_rules
+            ) or []
             platform_label = ", ".join(format_platform_name(p) for p in platforms)
             print(f"  - {entry_software(entry)} (supported: {platform_label})")
         print()
@@ -448,7 +450,8 @@ def main() -> None:
 
             if entries_equal(src, dest, is_dir):
                 print(
-                    "No differences detected. Repo backup already matches the local config."
+                    "No differences detected. "
+                    "Repo backup already matches the local config."
                 )
                 summary["unchanged"].append(software)
                 operations.append(

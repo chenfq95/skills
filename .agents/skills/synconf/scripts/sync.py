@@ -53,7 +53,7 @@ def run(
         result.stderr = f"Command not found: {e}"
         result.stdout = ""
         return result
-    except subprocess.TimeoutExpired as e:
+    except subprocess.TimeoutExpired:
         result = subprocess.CompletedProcess(cmd, 124)
         result.stderr = f"Command timed out after {timeout}s"
         result.stdout = ""
@@ -113,7 +113,9 @@ def commit_and_push(repo_dir: Path) -> bool:
         return False
 
     # Check if there are staged changes
-    result = run(["git", "diff", "--cached", "--quiet"], repo_dir, capture=True, timeout=30)
+    result = run(
+        ["git", "diff", "--cached", "--quiet"], repo_dir, capture=True, timeout=30
+    )
     if result.returncode == 0:
         print("No changes to sync")
         return False

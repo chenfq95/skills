@@ -271,7 +271,9 @@ def test_selection_order() -> None:
                 "editor/vim/.vimrc",
             ],
         }
-        manifest_path.write_text(json.dumps(manifest_payload, indent=2), encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(manifest_payload, indent=2), encoding="utf-8"
+        )
         state_path.write_text(json.dumps(state_payload, indent=2), encoding="utf-8")
 
         manifest = common.load_manifest(manifest_path)
@@ -364,7 +366,8 @@ def test_manage_removal_cleanup() -> None:
         manifest = common.load_manifest(manifest_path)
         state = common.load_state(repo_dir)
         prune_configs(
-            manifest, state, repo_dir, manifest_path, remove_indices=[2, 3], auto_yes=True
+            manifest, state, repo_dir, manifest_path,
+            remove_indices=[2, 3], auto_yes=True
         )
 
         updated = json.loads(manifest_path.read_text(encoding="utf-8"))
