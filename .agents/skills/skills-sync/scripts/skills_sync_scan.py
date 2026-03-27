@@ -140,7 +140,7 @@ def scan_skills_directory(skills_dir: Path) -> Dict[str, Dict[str, Any]]:
 
 
 def scan_all_skills() -> Dict[str, Dict[str, Any]]:
-    """Scan all non-local skills from .agents and .claude directories."""
+    """Scan all non-local skills from .agents directory."""
     home = get_home_dir()
     all_skills: Dict[str, Dict[str, Any]] = {}
 
@@ -148,23 +148,20 @@ def scan_all_skills() -> Dict[str, Dict[str, Any]]:
     lock_skills = agents_lock.get("skills", {})
 
     agents_skills = scan_skills_directory(home / ".agents" / "skills")
-    claude_skills = scan_skills_directory(home / ".claude" / "skills")
 
-    all_skill_names = (
-        set(lock_skills.keys()) | set(agents_skills.keys()) | set(claude_skills.keys())
-    )
-
-    for name in all_skill_names:
+    # Only include skills that actually exist in the directory
+    for name in agents_skills.keys():
         skill_info: Dict[str, Any] = {
             "name": name,
             "source": "",
             "source_url": "",
             "source_type": "local",
             "skill_path": "",
-            "location": [],
+            "location": [".agents"],
             "plugin_name": None,
         }
 
+        # Enrich with lock file metadata if available
         if name in lock_skills:
             lock_info = lock_skills[name]
             skill_info["source"] = lock_info.get("source", "")
@@ -174,11 +171,6 @@ def scan_all_skills() -> Dict[str, Dict[str, Any]]:
             )
             skill_info["skill_path"] = lock_info.get("skillPath", "")
             skill_info["plugin_name"] = lock_info.get("pluginName")
-
-        if name in agents_skills:
-            skill_info["location"].append(".agents")
-        if name in claude_skills:
-            skill_info["location"].append(".claude")
 
         if skill_info["source_type"] == "local":
             continue
@@ -192,6 +184,22 @@ def print_scan_results(skills: Dict[str, Dict[str, Any]]) -> None:
     """Print scan results as JSON."""
     output = {"total": len(skills), "skills": list(skills.values())}
     print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+def print_skill_list(skills: Dict[str, Dict[str, Any]]) -> None:
+    """Print skills as a numbered list for user selection."""
+    sorted_skills = get_sorted_skills(skills)
+    if not sorted_skills:
+        print("No non-local skills found in ~/.agents/skills/")
+        return
+
+    print(f"Found {len(sorted_skills)} skill(s) in ~/.agents/skills/:\n")
+    for index, skill in enumerate(sorted_skills, start=1):
+        source = skill["source"] or skill["source_url"] or "n/a"
+        print(f"  {index}. {skill['name']} [{skill['source_type']}] source={source}")
+    print()
+    print("To export, specify skill names with --skills parameter.")
+    print("Example: --skills \"skill1,skill2\" or --skills \"all\"")
 
 
 def get_sorted_skills(skills: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:

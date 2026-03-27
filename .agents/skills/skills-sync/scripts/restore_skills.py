@@ -73,12 +73,11 @@ def scan_skills_directory(skills_dir: Path) -> List[str]:
 
 
 def get_installed_skill_names() -> List[str]:
-    """Return actually installed global skill names across supported locations."""
+    """Return actually installed global skill names from .agents directory."""
     home = get_home_dir()
     installed = set()
 
     installed.update(scan_skills_directory(home / ".agents" / "skills"))
-    installed.update(scan_skills_directory(home / ".claude" / "skills"))
 
     return sorted(installed)
 

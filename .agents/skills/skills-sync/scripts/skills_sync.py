@@ -10,6 +10,7 @@ from skills_sync_scan import (
     get_sorted_skills,
     parse_skill_selection,
     print_scan_results,
+    print_skill_list,
     prompt_skill_selection,
     scan_all_skills,
 )
@@ -30,7 +31,12 @@ def main() -> int:
     parser.add_argument(
         "--scan",
         action="store_true",
-        help="Scan and output discovered non-local skills as JSON",
+        help="Scan and list discovered non-local skills",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output scan results as JSON instead of human-readable list",
     )
     parser.add_argument(
         "--output-yaml",
@@ -59,6 +65,10 @@ def main() -> int:
     if args.skills and not args.output_yaml:
         parser.error("--skills requires --output-yaml")
 
+    if args.json and not args.scan:
+        parser.error("--json requires --scan")
+
+    # Scan with output-yaml: export mode
     if args.scan and args.output_yaml:
         try:
             all_skills = scan_all_skills()
@@ -90,13 +100,17 @@ def main() -> int:
             return 1
         return 0
 
+    # Scan only: list or JSON output
     if args.scan:
         try:
             all_skills = scan_all_skills()
         except Exception as e:
             print(f"Error scanning skills: {e}", file=sys.stderr)
             return 1
-        print_scan_results(all_skills)
+        if args.json:
+            print_scan_results(all_skills)
+        else:
+            print_skill_list(all_skills)
         return 0
 
     if args.from_yaml:

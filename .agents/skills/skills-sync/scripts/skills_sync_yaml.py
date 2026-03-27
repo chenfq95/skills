@@ -255,6 +255,14 @@ def export_restore_script(script_path: Path) -> None:
     if not template_path.exists():
         raise FileNotFoundError(f"Restore script template not found: {template_path}")
 
+    # Skip if source and target are the same file
+    try:
+        if template_path.resolve() == script_path.resolve():
+            print(f"[OK] Restore script already exists: {script_path}", file=sys.stderr)
+            return
+    except OSError:
+        pass
+
     script_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
