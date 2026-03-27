@@ -1,203 +1,116 @@
 {
   "skill_name": "synconf",
+  "description": "Skill invocation scenarios - script internals are tested by tests.py",
   "evals": [
     {
       "id": 1,
-      "prompt": "帮我把 PowerShell profile、Windows Terminal 和 VS Code 设置统一备份起来，默认放到用户目录下的 .synconf，如果已经存在就继续用原来的仓库。",
-      "expected_output": "The workflow uses `~/.synconf` by default, reuses it when present, covers Windows config paths, and keeps Git initialization behavior explicit.",
-      "files": []
+      "prompt": "帮我把 PowerShell profile、Windows Terminal 和 VS Code 设置统一备份起来",
+      "expected_output": "Uses `~/.synconf` by default, scans first, asks the user which entries to include, then passes the selected JSON into `manage.py init --config ... --mode merge` before running `backup.py`."
     },
     {
       "id": 2,
-      "prompt": "我想把 Mac 和 Windows 的开发环境配置同步起来，最好直接生成一个跨平台方案，默认仓库位置不要让我选，就用家目录里的隐藏目录。",
-      "expected_output": "The workflow recommends the cross-platform Python generator, defaults the repo to `~/.synconf`, and explains copy-based local sync plus home-relative path preservation.",
-      "files": []
+      "prompt": "我想把 Mac 和 Windows 的开发环境配置同步起来",
+      "expected_output": "Explains cross-platform workflow using copy-based sync with home path placeholders."
     },
     {
       "id": 3,
-      "prompt": "帮我整理 dotfiles，但是我已经有 ~/.synconf 了，不要新建别的目录；顺手告诉我初始化和后续 git 提交流程。",
-      "expected_output": "The workflow reuses `~/.synconf`, avoids creating a second repo, and gives follow-up `git -C ~/.synconf ...` commands.",
-      "files": []
+      "prompt": "帮我整理 dotfiles，但是我已经有 ~/.synconf 了，不要新建别的目录",
+      "expected_output": "Reuses existing `~/.synconf`, runs incremental sync rather than first-time setup."
     },
     {
       "id": 4,
-      "prompt": "每次备份前都先让我选要备份哪些软件的配置，并把 PowerShell、Windows Terminal、VS Code 这些软件对应的配置路径都列出来。",
-      "expected_output": "The workflow requires per-software manual selection before backup and lists concrete local config paths for each software candidate.",
-      "files": []
+      "prompt": "扫描配置时请告诉我每个软件会备份到哪里，以及是否已有备份",
+      "expected_output": "Runs `manage.py init --dry-run` to show scan results without changes, displays repo target paths in `category/software` form and backup status."
     },
     {
       "id": 5,
-      "prompt": "如果我本地的 VS Code settings.json 和 ~/.synconf 里的备份不一样，不要直接覆盖，先把差异详细列出来，再让我说明怎么合并。",
-      "expected_output": "The workflow shows a detailed diff, pauses for user merge instructions, stores merge notes, and avoids overwriting before review.",
-      "files": []
+      "prompt": "扫描结果可以按分类展示，但备份时要对每个软件逐个确认",
+      "expected_output": "Scan groups by category for readability, but `backup.py` prompts per-software confirmation."
     },
     {
       "id": 6,
-      "prompt": "扫描配置时请直接告诉我每个软件在 ~/.synconf 里会备份到哪里，以及那里现在有没有现成备份。",
-      "expected_output": "The scan output includes software name, local path, repo target path, and whether a backup already exists in `~/.synconf`.",
-      "files": []
+      "prompt": "我想把 ~/.synconf 里的配置同步到这台新电脑上",
+      "expected_output": "Runs `restore.py` with per-software confirmation and platform filtering."
     },
     {
       "id": 7,
-      "prompt": "如果 Windows Terminal 整个配置目录跟 ~/.synconf 里已有的目录不同，不仅要告诉我哪些文件新增/删除，还要把同名文件里的具体内容差异也列出来。",
-      "expected_output": "Directory diff handling reports both file-list changes and content diffs for shared files before asking the user how to merge.",
-      "files": []
+      "prompt": "把 Ghostty 和 Zed 的配置也纳入 synconf 管理",
+      "expected_output": "Scan detects Ghostty and Zed config paths, includes them in numbered selection."
     },
     {
       "id": 8,
-      "prompt": "遇到已有备份和本地配置冲突时，不要只问我要不要覆盖，给我明确的选项：覆盖、跳过、或者之后手动合并。",
-      "expected_output": "After selection and before any backup writes, the conflict workflow presents a numbered conflict summary, asks for an upfront default strategy such as overwrite-all, skip-all, manual-all, or review-each, and still supports per-conflict handling when needed.",
-      "files": []
+      "prompt": "Zed 只跟踪 settings.json，不要整个目录",
+      "expected_output": "Config registry tracks only Zed's `settings.json`, not the full directory."
     },
     {
       "id": 9,
-      "prompt": "扫描结果可以按 Shell、Editor 这些分类展示，但备份时不要让我按分类勾选，我要对 PowerShell、VS Code、Windows Terminal 这些软件逐个确认。",
-      "expected_output": "The workflow may group scan results for readability, but backup selection is still per-software and asks for individual confirmation for each software entry rather than category-level selection.",
-      "files": []
+      "prompt": "不要为了重建配置而删掉 ~/.synconf 目录，我里面已经配好了 git remote",
+      "expected_output": "Never deletes or recreates `~/.synconf`, preserves Git history and remotes."
     },
     {
       "id": 10,
-      "prompt": "扫描和备份的交互方式要一致：扫描时每个软件有编号，备份确认时也要按编号逐个确认，不要突然换成另一种风格。",
-      "expected_output": "The scan and backup UIs both use numbered per-software entries and reinforce one-at-a-time confirmation.",
-      "files": []
+      "prompt": "这套脚本要能在只有 Python 3.8 的机器上跑",
+      "expected_output": "All scripts avoid Python 3.9+ syntax like `list[str]`, `dict[str, Any]`, `Path | None`."
     },
     {
       "id": 11,
-      "prompt": "如果某些配置已经和 ~/.synconf 里完全一致，就别重复覆盖了；另外，手动合并的项要有一个统一的待处理清单，方便我后面回来看。",
-      "expected_output": "The backup flow skips unchanged entries, prints a final summary, and records manual merge follow-ups in `~/.synconf/merge-notes/pending-merges.json`.",
-      "files": []
+      "prompt": "我想连续做几轮同步：先备份一批，再同步一批到本机",
+      "expected_output": "Uses `sync.py` for repeated interactive rounds in a single session."
     },
     {
       "id": 12,
-      "prompt": "我选完要备份的软件后，正式开始备份前先把这次选中的软件用编号再总结一遍，确认没有选错。",
-      "expected_output": "After per-software selection, the backup flow shows a numbered summary of the chosen software, then performs conflict preflight on that selected subset before any backup writes begin.",
-      "files": []
-    },
-    {
-      "id": 32,
-      "prompt": "我选完这批配置后，如果其中有几个和 ~/.synconf 里的现有备份冲突，别等复制到一半再问。先把冲突项汇总给我，再让我先定默认策略，必要时我再改个别项。",
-      "expected_output": "The execution flow inserts a preflight conflict review immediately after selection, summarizes only the selected conflicting entries, asks for a default bulk decision first, and allows per-conflict exceptions before writing any files.",
-      "files": []
+      "prompt": "开始同步前先帮我做环境检测",
+      "expected_output": "Reports OS, home path, repo existence, Python availability, and existing tracked config count."
     },
     {
       "id": 13,
-      "prompt": "我想把 ~/.synconf 里已有的 VS Code、PowerShell、Windows Terminal 配置同步到这台新电脑上，也要先扫描 repo 和本机当前环境，再让我逐个确认。",
-      "expected_output": "The workflow supports interactive repo-to-local sync by scanning both repo backups and the current local environment, then asking for per-software confirmation before syncing.",
-      "files": []
+      "prompt": "我已经有一部分软件在 ~/.synconf 里了，现在想继续把 zed 增量加进去",
+      "expected_output": "Scans first, asks the user to confirm which new entries to include, then calls `manage.py init --config ... --mode merge` so the new subset is merged into the existing manifest."
     },
     {
       "id": 14,
-      "prompt": "如果仓库里的备份和我本机当前配置不一样，同步到本机之前也要先看 diff，再让我决定覆盖、跳过还是后面手动合并。",
-      "expected_output": "The repo-to-local sync flow performs conflict preflight on the selected subset before writing, supports a default bulk decision plus per-conflict exceptions, and still offers overwrite, skip, or manual-merge handling with merge-note tracking.",
-      "files": []
+      "prompt": "你现在是在 skill 源码仓库里调试，不是在 ~/.synconf 里跑脚本",
+      "expected_output": "Uses `--repo-dir ~/.synconf` when running from skill source tree."
     },
     {
       "id": 15,
-      "prompt": "把 Ghostty 和 Zed 的配置也纳入 synconf 管理，扫描、备份、同步到本机这三条链路都要支持。",
-      "expected_output": "The workflow detects Ghostty and Zed config locations, includes them in per-software scan output, and supports both backup and repo-to-local sync for them.",
-      "files": []
-    },
-    {
-      "id": 28,
-      "prompt": "Zed 不要再整个目录都同步了，只跟踪 settings.json，避免把 prompts 数据库之类的大量运行时文件一起带进仓库。",
-      "expected_output": "The workflow tracks only Zed's `settings.json` file rather than the full Zed directory, so runtime data like prompt databases is excluded from scan, backup, and restore.",
-      "files": []
+      "prompt": "我刚选了 1,2,3 这几个配置，后续备份只处理这几个",
+      "expected_output": "Uses `backup.py --last-selection` to constrain backup to the subset selected by the latest `manage.py init`."
     },
     {
       "id": 16,
-      "prompt": "我会把 ~/.synconf 拷到另一台用户名不一样的新电脑上，像 zed、ghostty、git 配置里如果写了旧 home 路径，备份时要做占位符处理，恢复时再替换成新 home。",
-      "expected_output": "The workflow normalizes machine-specific home paths in text configs to placeholders during backup and renders them back to the current machine's home path during restore.",
-      "files": []
+      "prompt": "synconf 跑完后给我一份明细操作清单",
+      "expected_output": "Response includes checklist: completed actions, affected software, pending merges, next Git commands."
     },
     {
       "id": 17,
-      "prompt": "同步到本机和恢复安装都统一用 copy，不要再用软链接，避免不同机器上行为不一致。",
-      "expected_output": "The workflow uses copy-based install and repo-to-local sync instead of symlinks, while still backing up any existing local files before overwriting.",
-      "files": []
+      "prompt": "我手动改过 manifest.json，重新扫描时只追加新发现的软件",
+      "expected_output": "Init uses merge mode by default, appends new entries without overwriting existing ones."
     },
     {
       "id": 18,
-      "prompt": "不要为了重建配置而删掉 ~/.synconf 目录，我里面已经配好了 git remote；你只能复用现有仓库，不能删除或重建它。",
-      "expected_output": "The workflow explicitly preserves the existing `~/.synconf` directory and reuses it in place without deleting or recreating the repo, so Git remotes and history stay intact.",
-      "files": []
+      "prompt": "我在 manage.py 里取消跟踪某个软件时，备份文件也要一起删掉",
+      "expected_output": "Uses `manage.py prune <indices>` to remove entries and clean up repo backups."
     },
     {
       "id": 19,
-      "prompt": "这套 synconf 脚本要能在只有 Python 3.8 的机器上跑起来，别用 3.9+ 才支持的类型注解语法。",
-      "expected_output": "Both bundled scripts and generated scripts avoid Python 3.9+ annotation syntax and remain compatible with Python 3.8 execution.",
-      "files": []
+      "prompt": "我已经知道要同步 1,2,5 了，别再等我二次输入，直接按这些编号加入清单",
+      "expected_output": "Scans first, maps the confirmed indices to entries, formats only those entries as JSON, and passes that JSON into `manage.py init --config ... --mode merge`."
     },
     {
       "id": 20,
-      "prompt": "我想连续做几轮同步：先备份一批，再同步一批到本机，再继续下一轮，不想每次都重新启动整个 synconf 流程。",
-      "expected_output": "The workflow supports repeated interactive sync rounds in a single `sync.py` session, reusing the same repo and letting the user run backup and optional restore multiple times before finishing.",
-      "files": []
+      "prompt": "扫描时别把 AWS、Docker、Kubernetes、GitHub CLI 这些容易带凭据的目录默认列进来",
+      "expected_output": "Does not scan high-risk credential stores like `.aws`, `.docker`, `.kube`, or `~/.config/gh` by default."
     },
     {
       "id": 21,
-      "prompt": "开始同步前先帮我做环境检测，告诉我当前系统、home 目录、会扫描哪些配置根目录、以及 ~/.synconf 是否已经存在。",
-      "expected_output": "The workflow begins with an environment detection step that summarizes OS, home path, repo path, repo existence, and the major config roots that will be scanned before selection starts.",
-      "files": []
+      "prompt": "我已经确认要 1,3,5 这几个，不要再把编号通过 stdin 喂给 manage.py，直接把选中项转成 JSON 再合并写入",
+      "expected_output": "Scans first, converts the confirmed subset into a JSON payload, and calls `manage.py init --config ... --mode merge` instead of sending indices through stdin."
     },
     {
       "id": 22,
-      "prompt": "我已经有一部分软件在 ~/.synconf 里了，现在想继续把 zed 和 ghostty 增量加进去，不要重建仓库，要基于已有清单继续同步。",
-      "expected_output": "The workflow supports incremental sync by reusing `~/.synconf/manifest.json`, reporting the existing tracked config count, and merging newly selected software into the tracked inventory without rebuilding the repo.",
-      "files": []
-    },
-    {
-      "id": 26,
-      "prompt": "你现在是在 skill 源码仓库里调试 synconf，不是在 ~/.synconf 里直接跑脚本。扫描和管理时别把 manifest 写回技能目录，显式操作 ~/.synconf。",
-      "expected_output": "The workflow distinguishes the skill source tree from the generated runtime repo and uses an explicit repo target such as `--repo-dir ~/.synconf` when operating from source scripts.",
-      "files": []
-    },
-    {
-      "id": 27,
-      "prompt": "我刚手动选了 1,2,3 这几个配置做增量同步。后续自动化步骤可以非交互，但只能保留这几个编号，不能顺手把 manifest 里的其他旧配置也一起改掉。",
-      "expected_output": "The workflow can apply an explicit user-provided selection non-interactively with `manage.py --select --keep ...` and can constrain backup to the current incremental subset instead of touching unrelated tracked entries.",
-      "files": []
-    },
-    {
-      "id": 23,
-      "prompt": "开始执行前先检查当前用户有没有配置好 python 环境，至少告诉我 python 能不能用、解释器路径是什么，再继续 synconf。",
-      "expected_output": "The environment detection step checks whether Python is available for the current user and reports Python availability plus interpreter path before continuing the sync workflow.",
-      "files": []
-    },
-    {
-      "id": 24,
-      "prompt": "我把一份同时包含 Windows Terminal 和 zed 备份的 ~/.synconf 拿到 macOS 上恢复时，先过滤掉当前系统不支持的备份文件，只让我确认这台机器能用的那些配置。",
-      "expected_output": "The restore workflow filters out repo backups that do not support the current platform before per-software confirmation and reports which entries were skipped as incompatible.",
-      "files": []
-    },
-    {
-      "id": 33,
-      "prompt": "从 ~/.synconf 恢复到本机时，也要和备份一样：我选完要同步的软件后，先把有冲突的项汇总出来，让我先选默认策略，再允许我改个别项，最后才开始写本机文件。",
-      "expected_output": "The restore execution flow inserts a preflight conflict review immediately after selection, summarizes only the selected conflicting entries, asks for a default bulk decision first, allows per-conflict exceptions, and only then starts writing local files.",
-      "files": []
-    },
-    {
-      "id": 25,
-      "prompt": "我这个 ~/.synconf 是旧版本生成的，manifest 里还没有平台字段；恢复到 Linux 时也要根据路径自动识别，把 Windows 的 AppData 和 macOS 的 Application Support 备份过滤掉。",
-      "expected_output": "The restore workflow remains backward compatible with older repos by inferring platform compatibility from backup paths when manifest platform metadata is missing, and filters unsupported Windows/macOS entries before confirmation on Linux.",
-      "files": []
-    },
-    {
-      "id": 29,
-      "prompt": "synconf 跑完以后，不要只说完成了。把这次做过的事、涉及到的软件、有没有待手工处理的 merge、接下来 git commit/push 要执行什么，都给我列成一份明细操作清单。",
-      "expected_output": "After finishing the requested synconf workflow, the response includes a detailed operational checklist covering completed actions, affected software entries, pending manual merge review, and exact next Git commands.",
-      "files": []
-    },
-    {
-      "id": 30,
-      "prompt": "我之前手动改过 ~/.synconf/manifest.json，还保留了一些旧条目上的备注和自定义字段。现在重新扫描时，只能把新发现的软件追加进去，不能把已有条目整条覆盖掉。",
-      "expected_output": "The scan workflow appends newly discovered configs to `~/.synconf/manifest.json` without overwriting existing entries, so prior tracked items and manual metadata remain intact.",
-      "files": []
-    },
-    {
-      "id": 31,
-      "prompt": "我在 manage.py 里取消跟踪某个软件时，不要只改 manifest.json。对应保存在 ~/.synconf 里的备份文件或目录也要一起删掉，避免仓库里留垃圾。",
-      "expected_output": "When `manage.py --select` removes tracked entries from `manifest.json`, it also deletes the corresponding backup files or directories from the repo and reports what was cleaned.",
-      "files": []
+      "prompt": "把 Zed 的配置也同步好，注意 Windows、macOS、Linux 的路径不一样",
+      "expected_output": "Uses cross-platform Zed paths correctly: `~/.config/zed/settings.json` and `~/.config/zed/keymap.json` on macOS/Linux, `~/AppData/Roaming/Zed/settings.json` and `~/AppData/Roaming/Zed/keymap.json` on Windows; scan only lists paths supported by the current OS, avoids duplicate entries, and stores backups under category/software paths like `editor/zed/windows/settings.json`."
     }
   ]
 }

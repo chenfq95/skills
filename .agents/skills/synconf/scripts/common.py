@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared constants and utilities for synconf scripts.
 
-This module provides common functionality used by init_repo.py and other scripts.
+This module provides common functionality used by all synconf scripts.
 Compatible with Python 3.8+ (avoids 3.9+ type syntax).
 """
 
@@ -10,27 +10,32 @@ import json
 import logging
 import platform
 import shutil
-from datetime import datetime
+import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, TypedDict
 
 # Configure module-level logger
 logger = logging.getLogger("synconf")
 
+# -----------------------------------------------------------------------------
 # Constants
+# -----------------------------------------------------------------------------
+
 HOME = Path.home()
 IS_MACOS = platform.system() == "Darwin"
 IS_WINDOWS = platform.system() == "Windows"
 IS_LINUX = platform.system() == "Linux"
 DEFAULT_REPO_DIR = HOME / ".synconf"
 SCRIPTS_DIR = Path(__file__).resolve().parent
-SKILL_DIR = SCRIPTS_DIR.parent
-REPO_TEMPLATE_DIR = SKILL_DIR / "assets" / "repo-template"
+TEMPLATES_DIR = SCRIPTS_DIR.parent / "templates"
+CONFIG_PATH = SCRIPTS_DIR / "config.json"
 
 # Placeholder tokens for home path normalization
 HOME_TOKEN = "__SYNCONF_HOME__"
 HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
+
 REPO_SUBDIRECTORIES = [
     "shell",
     "git",
@@ -42,172 +47,51 @@ REPO_SUBDIRECTORIES = [
     "other",
     "merge-notes",
 ]
+
 RUNTIME_REPO_FILES = [
-    "scan.py",
     "manage.py",
     "backup.py",
     "restore.py",
     "sync.py",
     "init_repo.py",
+    "install.py",
     "common.py",
     "config.json",
 ]
-FALLBACK_INSTALL_SCRIPT = """#!/usr/bin/env python3
-\"\"\"Install dotfiles by copying repo configs into the local machine.
-
-This script reads manifest.json to determine which configs to install,
-then copies them from the repo to the local machine, backing up existing files.
-\"\"\"
-
-import json
-import shutil
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional
 
 
-DOTFILES_DIR = Path(__file__).resolve().parent
-BACKUP_DIR = Path.home() / ".synconf-backup" / datetime.now().strftime("%Y%m%d-%H%M%S")
-MANIFEST_PATH = DOTFILES_DIR / "manifest.json"
-HOME_TOKEN = "__SYNCONF_HOME__"
-HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
+# -----------------------------------------------------------------------------
+# Type Definitions
+# -----------------------------------------------------------------------------
 
 
-def path_from_rel(path_str: str) -> Path:
-    \"\"\"Convert a relative path string to Path object.\"\"\"
-    return Path(path_str)
+class ManifestEntry(TypedDict, total=False):
+    """Tracked config entry stored in manifest.json."""
+
+    software: str
+    category: str
+    home_rel: str
+    repo_rel: str
+    is_dir: bool
+    size: str
+    file_count: int
+    platforms: List[str]
+    exists: bool
+    source: str
 
 
-def read_text_file(path: Path) -> Optional[str]:
-    \"\"\"Read a text file, returning None if not readable as UTF-8.\"\"\"
-    try:
-        return path.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError):
-        return None
+class ManifestPayload(TypedDict, total=False):
+    """Manifest payload stored in manifest.json."""
+
+    version: int
+    files: List[ManifestEntry]
 
 
-def render_text(text: str) -> str:
-    \"\"\"Replace placeholders with actual home paths.\"\"\"
-    home = Path.home()
-    return text.replace(HOME_POSIX_TOKEN, home.as_posix()).replace(HOME_TOKEN, str(home))
+class StatePayload(TypedDict, total=False):
+    """Local-only state stored in .state.json (gitignored)."""
 
-
-def contains_placeholders(path: Path) -> bool:
-    \"\"\"Check if a file or directory contains home path placeholders.\"\"\"
-    if path.is_dir():
-        return any(contains_placeholders(child) for child in path.rglob("*") if child.is_file())
-    text = read_text_file(path)
-    return bool(text and (HOME_TOKEN in text or HOME_POSIX_TOKEN in text))
-
-
-def remove_path(path: Path) -> None:
-    \"\"\"Remove a file or directory.\"\"\"
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        shutil.rmtree(path)
-
-
-def backup_existing(dst: Path) -> None:
-    \"\"\"Backup existing local config before overwriting.\"\"\"
-    if not dst.exists() and not dst.is_symlink():
-        return
-
-    backup_target = BACKUP_DIR / dst.relative_to(Path.home())
-    backup_target.parent.mkdir(parents=True, exist_ok=True)
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(dst), str(backup_target))
-    print(f"Backed up {dst} -> {backup_target}")
-
-
-def copy_path(src: Path, dst: Path) -> None:
-    \"\"\"Copy a file or directory.\"\"\"
-    if src.is_dir():
-        shutil.copytree(src, dst)
-    else:
-        shutil.copy2(src, dst)
-
-
-def copy_with_render(src: Path, dst: Path) -> None:
-    \"\"\"Copy a file or directory, rendering placeholders.\"\"\"
-    if src.is_dir():
-        if dst.exists():
-            shutil.rmtree(dst)
-        dst.mkdir(parents=True, exist_ok=True)
-        for child in src.rglob("*"):
-            rel = child.relative_to(src)
-            target = dst / rel
-            if child.is_dir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            text = read_text_file(child)
-            if text is None:
-                shutil.copy2(child, target)
-            else:
-                target.write_text(render_text(text), encoding="utf-8")
-        return
-
-    text = read_text_file(src)
-    if text is None:
-        shutil.copy2(src, dst)
-    else:
-        dst.write_text(render_text(text), encoding="utf-8")
-
-
-def install_file(src: Path, dst: Path, is_dir: bool) -> None:
-    \"\"\"Copy a repo config into the local machine.\"\"\"
-    if dst.exists() or dst.is_symlink():
-        backup_existing(dst)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-
-    if contains_placeholders(src):
-        copy_with_render(src, dst)
-        print(f"Rendered {src} -> {dst}")
-        return
-
-    copy_path(src, dst)
-    print(f"Copied {src} -> {dst}")
-
-
-def load_manifest() -> List[Dict[str, object]]:
-    \"\"\"Load manifest.json and return the files list.\"\"\"
-    if not MANIFEST_PATH.exists():
-        return []
-    try:
-        payload = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-        return payload.get("files", [])
-    except json.JSONDecodeError:
-        return []
-
-
-def main() -> None:
-    \"\"\"Main entry point.\"\"\"
-    print(f"Installing dotfiles from {DOTFILES_DIR}")
-    print()
-
-    files = load_manifest()
-    if not files:
-        print("No configs found in manifest.json. Nothing to install.")
-        return
-
-    for entry in files:
-        src = DOTFILES_DIR / path_from_rel(entry["repo_rel"])
-        dst = Path.home() / path_from_rel(entry["home_rel"])
-        if src.exists():
-            install_file(src, dst, entry["is_dir"])
-        else:
-            print(f"Warning: {src} not found, skipping")
-
-    print()
-    print("Dotfiles installed successfully!")
-    if BACKUP_DIR.exists():
-        print(f"Backup of old files saved to: {BACKUP_DIR}")
-
-
-if __name__ == "__main__":
-    main()
-"""
+    last_scan_order: List[str]
+    last_selected_repo_rels: List[str]
 
 
 @dataclass
@@ -226,7 +110,7 @@ class FileMapping:
 class ConflictRecord(TypedDict):
     """Detected conflict between two sync endpoints."""
 
-    entry: Dict[str, Any]
+    entry: ManifestEntry
     source: str
     target: str
 
@@ -246,6 +130,87 @@ class OperationRecord(TypedDict):
     target: str
     target_exists_before: bool
     action: str
+
+
+def entry_software(entry: Mapping[str, Any]) -> str:
+    """Return the software label for a manifest-like entry."""
+    return str(entry.get("software", "Unknown"))
+
+
+def entry_home_rel(entry: Mapping[str, Any]) -> str:
+    """Return the home-relative path for a manifest-like entry."""
+    return str(entry.get("home_rel", "")).strip()
+
+
+def entry_repo_rel(entry: Mapping[str, Any]) -> str:
+    """Return the repo-relative path for a manifest-like entry."""
+    return str(entry.get("repo_rel", "")).strip()
+
+
+def entry_is_dir(entry: Mapping[str, Any]) -> bool:
+    """Return whether the manifest-like entry points to a directory."""
+    return bool(entry.get("is_dir", False))
+
+
+# -----------------------------------------------------------------------------
+# ANSI Colors
+# -----------------------------------------------------------------------------
+
+
+class Colors:
+    """ANSI color codes for terminal output."""
+
+    GREEN = "\033[0;32m"
+    YELLOW = "\033[1;33m"
+    CYAN = "\033[0;36m"
+    RED = "\033[0;31m"
+    RESET = "\033[0m"
+
+    @classmethod
+    def check(cls) -> str:
+        """Return a green checkmark."""
+        return f"{cls.GREEN}\u2713{cls.RESET}"
+
+
+# -----------------------------------------------------------------------------
+# Configuration Loading
+# -----------------------------------------------------------------------------
+
+
+def load_config() -> Dict[str, Any]:
+    """Load configuration from config.json."""
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def get_category_rules(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
+    """Get category inference rules from config."""
+    if config is None:
+        config = load_config()
+    return config.get("category_rules", {}).get("rules", [])
+
+
+def get_software_rules(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
+    """Get software name inference rules from config."""
+    if config is None:
+        config = load_config()
+    return config.get("software_rules", {}).get("rules", [])
+
+
+def get_platform_rules(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Get platform detection rules from config."""
+    if config is None:
+        config = load_config()
+    return config.get("platform_rules", {}).get("rules", [])
+
+
+# -----------------------------------------------------------------------------
+# Platform Utilities
+# -----------------------------------------------------------------------------
 
 
 def normalize_platform_name(name: str) -> str:
@@ -285,6 +250,166 @@ def get_current_platform() -> str:
     return normalize_platform_name(platform.system())
 
 
+def normalize_platform_list(platforms: Optional[Sequence[str]]) -> List[str]:
+    """Normalize and deduplicate a platform list."""
+    normalized: List[str] = []
+    if not platforms:
+        return normalized
+
+    for item in platforms:
+        name = normalize_platform_name(str(item))
+        if name not in normalized:
+            normalized.append(name)
+    return normalized
+
+
+def merge_supported_platforms(
+    *platform_groups: Optional[Sequence[str]],
+) -> Optional[List[str]]:
+    """Merge multiple platform lists into one normalized list."""
+    merged: List[str] = []
+    for group in platform_groups:
+        for name in normalize_platform_list(group):
+            if name not in merged:
+                merged.append(name)
+    return merged or None
+
+
+def entry_supports_platform(
+    entry: Mapping[str, Any],
+    target_platform: Optional[str] = None,
+) -> bool:
+    """Return True when a registry entry supports the target platform."""
+    if target_platform is None:
+        target_platform = get_current_platform()
+
+    supported_platforms = normalize_platform_list(entry.get("platforms"))
+    if not supported_platforms:
+        return True
+    return target_platform in supported_platforms
+
+
+def detect_platforms_from_path(
+    path: Path,
+    software: str,
+    platform_rules: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[List[str]]:
+    """Infer which platforms a config path supports.
+
+    Args:
+        path: Config file or directory path
+        software: Software name
+        platform_rules: Optional list of platform rules (loads from config if None)
+
+    Returns:
+        List of supported platforms, or None if cross-platform
+    """
+    if platform_rules is None:
+        platform_rules = get_platform_rules()
+
+    combined = " ".join(
+        [
+            path.as_posix().replace("\\", "/").lower(),
+            software.strip().lower(),
+        ]
+    )
+
+    for rule in platform_rules:
+        if rule["pattern"] in combined:
+            return [normalize_platform_name(p) for p in rule["platforms"]]
+
+    return None
+
+
+def detect_supported_platforms_from_entry(
+    entry: Mapping[str, Any],
+    platform_rules: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[List[str]]:
+    """Infer which platforms a manifest entry supports.
+
+    Args:
+        entry: Manifest entry dict
+        platform_rules: Optional list of platform rules
+
+    Returns:
+        List of supported platforms, or None if cross-platform
+    """
+    stored = entry.get("platforms")
+    if isinstance(stored, list) and stored:
+        normalized = normalize_platform_list(stored)
+        if normalized:
+            return normalized
+
+    if platform_rules is None:
+        platform_rules = get_platform_rules()
+
+    combined = " ".join(
+        [
+            str(entry.get("home_rel", "")).replace("\\", "/").lower(),
+            str(entry.get("repo_rel", "")).replace("\\", "/").lower(),
+            str(entry.get("software", "")).strip().lower(),
+        ]
+    )
+
+    for rule in platform_rules:
+        if rule["pattern"] in combined:
+            return [normalize_platform_name(p) for p in rule["platforms"]]
+
+    return None
+
+
+def filter_entries_for_platform(
+    entries: Sequence[ManifestEntry],
+    target_platform: Optional[str] = None,
+    platform_rules: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[List[ManifestEntry], List[ManifestEntry]]:
+    """Separate entries into supported and unsupported for a platform.
+
+    Args:
+        entries: List of manifest entries
+        target_platform: Platform to filter for (defaults to current)
+        platform_rules: Optional platform rules
+
+    Returns:
+        Tuple of (supported entries, skipped entries)
+    """
+    if target_platform is None:
+        target_platform = get_current_platform()
+
+    supported = []
+    skipped = []
+
+    for entry in entries:
+        platforms = detect_supported_platforms_from_entry(entry, platform_rules)
+        if platforms and target_platform not in platforms:
+            skipped.append(entry)
+        else:
+            supported.append(entry)
+
+    return supported, skipped
+
+
+# -----------------------------------------------------------------------------
+# Path Utilities
+# -----------------------------------------------------------------------------
+
+
+def resolve_repo_dir(repo_dir: Optional[str]) -> Path:
+    """Resolve the target synconf repository directory.
+
+    Args:
+        repo_dir: Optional explicit repo path
+
+    Returns:
+        Resolved repo directory path
+    """
+    if repo_dir:
+        return Path(repo_dir).expanduser().resolve()
+    if DEFAULT_REPO_DIR.exists():
+        return DEFAULT_REPO_DIR
+    return SCRIPTS_DIR.parent
+
+
 def relative_to_home(path: Path) -> Path:
     """Return a path relative to the user's home directory.
 
@@ -298,6 +423,29 @@ def relative_to_home(path: Path) -> Path:
         return path.resolve().relative_to(HOME.resolve())
     except ValueError:
         return Path(path.name)
+
+
+def display_home_path(path: Path) -> str:
+    """Return a stable ~/ prefixed path for display.
+
+    Args:
+        path: Path to format
+
+    Returns:
+        String like '~/.config/nvim'
+    """
+    rel = relative_to_home(path)
+    return "~/" + rel.as_posix() if rel.as_posix() != "." else "~"
+
+
+def path_from_rel(path_str: str) -> Path:
+    """Convert a relative path string to Path object."""
+    return Path(path_str)
+
+
+# -----------------------------------------------------------------------------
+# Text Processing
+# -----------------------------------------------------------------------------
 
 
 def read_text_file(path: Path) -> Optional[str]:
@@ -316,6 +464,139 @@ def read_text_lines(path: Path) -> Optional[List[str]]:
     return text.splitlines()
 
 
+def normalize_text(text: str) -> str:
+    """Replace home paths with placeholders for portability."""
+    return text.replace(HOME.as_posix(), HOME_POSIX_TOKEN).replace(
+        str(HOME), HOME_TOKEN
+    )
+
+
+def render_text(text: str) -> str:
+    """Replace placeholders with actual home paths."""
+    return text.replace(HOME_POSIX_TOKEN, HOME.as_posix()).replace(
+        HOME_TOKEN, str(HOME)
+    )
+
+
+# -----------------------------------------------------------------------------
+# Inference Functions
+# -----------------------------------------------------------------------------
+
+
+def infer_category(
+    path: Path,
+    rules: Optional[List[Dict[str, str]]] = None,
+) -> str:
+    """Infer repository category for a config path.
+
+    Args:
+        path: Config file or directory path
+        rules: Optional category rules (loads from config if None)
+
+    Returns:
+        Category name (shell, git, editor, terminal, dev, prompt, other)
+    """
+    if rules is None:
+        rules = get_category_rules()
+
+    text = path.as_posix().lower()
+    for rule in rules:
+        if rule["pattern"].lower() in text:
+            return rule["category"]
+    return "other"
+
+
+def infer_software(
+    path: Path,
+    rules: Optional[List[Dict[str, str]]] = None,
+) -> str:
+    """Infer a user-facing software name from a config path.
+
+    Args:
+        path: Config file or directory path
+        rules: Optional software rules (loads from config if None)
+
+    Returns:
+        Software name (e.g., 'VS Code', 'Neovim', 'Zsh')
+    """
+    if rules is None:
+        rules = get_software_rules()
+
+    text = path.as_posix().lower()
+    for rule in rules:
+        if rule["pattern"].lower() in text:
+            return rule["software"]
+    return path.name or path.as_posix()
+
+
+def slugify_path_component(value: str) -> str:
+    """Convert a user-facing label into a stable repo path component."""
+    lowered = value.strip().lower()
+    chars = []
+    last_was_dash = False
+
+    for char in lowered:
+        if char.isalnum():
+            chars.append(char)
+            last_was_dash = False
+            continue
+
+        if not last_was_dash:
+            chars.append("-")
+            last_was_dash = True
+
+    return "".join(chars).strip("-") or "item"
+
+
+def platform_path_component(platforms: Optional[Sequence[str]]) -> Optional[str]:
+    """Return a stable platform path segment when an entry is platform-scoped."""
+    normalized = normalize_platform_list(platforms)
+    if not normalized:
+        return None
+    return "-".join(normalized)
+
+
+def repo_relative_path(
+    src: Path,
+    category: str,
+    software: str,
+    is_dir: bool,
+    platforms: Optional[Sequence[str]] = None,
+) -> Path:
+    """Map a local config path to its destination inside the repo.
+
+    Args:
+        src: Source path (local config location)
+        category: Category for grouping in repo
+        software: Software name for grouping in repo
+        is_dir: Whether the source is a directory
+        platforms: Optional supported platform list
+
+    Returns:
+        Relative path like 'editor/vs-code/windows' or 'git/git/.gitconfig'
+    """
+    repo_root = Path(category) / slugify_path_component(software)
+    platform_component = platform_path_component(platforms)
+    if platform_component:
+        repo_root = repo_root / platform_component
+    if is_dir:
+        return repo_root
+    return repo_root / src.name
+
+
+def manifest_entry_identity(entry: Mapping[str, Any]) -> str:
+    """Return the stable logical identity for a manifest entry."""
+    home_rel = entry_home_rel(entry)
+    if home_rel:
+        return home_rel
+    return entry_repo_rel(entry)
+
+
+# -----------------------------------------------------------------------------
+# File Comparison
+# -----------------------------------------------------------------------------
+
+
 def summarize_directory(path: Path) -> List[str]:
     """List all files in a directory recursively."""
     return sorted(
@@ -330,7 +611,10 @@ def files_equal(src: Path, dest: Path) -> bool:
     src_lines = read_text_lines(src)
     dest_lines = read_text_lines(dest)
     if src_lines is None or dest_lines is None:
-        return src.read_bytes() == dest.read_bytes()
+        try:
+            return src.read_bytes() == dest.read_bytes()
+        except OSError:
+            return False
     return src_lines == dest_lines
 
 
@@ -352,6 +636,11 @@ def entries_equal(src: Path, dest: Path, is_dir: bool) -> bool:
     return files_equal(src, dest)
 
 
+# -----------------------------------------------------------------------------
+# Diff Display
+# -----------------------------------------------------------------------------
+
+
 def diff_file(
     src: Path,
     dest: Path,
@@ -362,7 +651,10 @@ def diff_file(
     src_lines = read_text_lines(src)
     dest_lines = read_text_lines(dest)
     if src_lines is None or dest_lines is None:
-        same = src.read_bytes() == dest.read_bytes()
+        try:
+            same = src.read_bytes() == dest.read_bytes()
+        except OSError:
+            same = False
         if not same:
             print("Binary or non-UTF8 file differs; review manually.")
         return not same
@@ -421,8 +713,128 @@ def print_diff(
     return diff_file(src, dest, src_label, dest_label)
 
 
+# -----------------------------------------------------------------------------
+# Manifest Operations
+# -----------------------------------------------------------------------------
+
+
+def empty_manifest() -> ManifestPayload:
+    """Return an empty manifest payload."""
+    return {"version": 1, "files": []}
+
+
+def load_manifest(manifest_path: Path) -> ManifestPayload:
+    """Load manifest.json or return default structure.
+
+    Args:
+        manifest_path: Path to manifest.json
+
+    Returns:
+        Manifest payload dict
+    """
+    if not manifest_path.exists():
+        return empty_manifest()
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return payload
+    except json.JSONDecodeError:
+        return empty_manifest()
+
+
+def save_manifest(payload: ManifestPayload, manifest_path: Path) -> None:
+    """Save manifest.json.
+
+    Args:
+        payload: Manifest data to save
+        manifest_path: Path to manifest.json
+    """
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def load_state(repo_dir: Path) -> StatePayload:
+    """Load .state.json or return empty structure."""
+    state_path = repo_dir / ".state.json"
+    if not state_path.exists():
+        return {}
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_state(state: StatePayload, repo_dir: Path) -> None:
+    """Save .state.json (local-only, gitignored)."""
+    state_path = repo_dir / ".state.json"
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+# -----------------------------------------------------------------------------
+# User Prompts
+# -----------------------------------------------------------------------------
+
+
+def prompt_yes_no(message: str, default: bool = False, auto_yes: bool = False) -> bool:
+    """Prompt for yes/no confirmation.
+
+    Args:
+        message: Prompt message
+        default: Default answer if user presses Enter
+        auto_yes: If True, always return True without prompting
+
+    Returns:
+        True for yes, False for no
+    """
+    if auto_yes:
+        return True
+    suffix = "[Y/n]" if default else "[y/N]"
+    answer = input(message + " " + suffix + " ").strip().lower()
+    if not answer:
+        return default
+    return answer in {"y", "yes"}
+
+
+def choose_conflict_action(auto_yes: bool = False, direction: str = "backup") -> str:
+    """Prompt user to choose how to handle a conflict.
+
+    Args:
+        auto_yes: If True, return "overwrite" without prompting
+        direction: "backup" or "restore" for context-appropriate messages
+
+    Returns:
+        "overwrite", "skip", or "manual"
+    """
+    if auto_yes:
+        return "overwrite"
+
+    if direction == "restore":
+        print("Choose what to do with this sync conflict:")
+        print("  1. overwrite - replace the local version with the repo version")
+        print("  2. skip - keep the local version unchanged for now")
+    else:
+        print("Choose what to do with this conflict:")
+        print("  1. overwrite - replace the repo version with the local version")
+        print("  2. skip - keep the repo version unchanged for now")
+    print("  3. manual - leave both as-is and resolve manually later")
+
+    while True:
+        answer = input("Select [1/2/3]: ").strip().lower()
+        if answer in {"1", "overwrite", "o"}:
+            return "overwrite"
+        if answer in {"2", "skip", "s"}:
+            return "skip"
+        if answer in {"3", "manual", "m", "manual-merge"}:
+            return "manual"
+        print("Please enter 1, 2, or 3.")
+
+
+# -----------------------------------------------------------------------------
+# Merge Notes
+# -----------------------------------------------------------------------------
+
+
 def save_merge_note(
-    entry: Dict[str, Any],
+    entry: Mapping[str, Any],
     note: str,
     merge_notes_dir: Path,
     repo_dir: Path,
@@ -433,14 +845,14 @@ def save_merge_note(
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     note_path = (
         merge_notes_dir
-        / f"{timestamp}-{direction}-{entry['software'].lower().replace(' ', '-')}.md"
+        / f"{timestamp}-{direction}-{entry_software(entry).lower().replace(' ', '-')}.md"
     )
     note_path.write_text(
         "\n".join(
             [
-                f"# Merge note for {entry['software']} ({direction})",
-                f"- Local path: `{Path.home() / Path(str(entry['home_rel']))}`",
-                f"- Repo path: `{repo_dir / Path(str(entry['repo_rel']))}`",
+                f"# Merge note for {entry_software(entry)} ({direction})",
+                f"- Local path: `{HOME / Path(entry_home_rel(entry))}`",
+                f"- Repo path: `{repo_dir / Path(entry_repo_rel(entry))}`",
                 "",
                 "## User instructions",
                 note.strip() or "(none)",
@@ -454,7 +866,7 @@ def save_merge_note(
 
 
 def append_pending_merge(
-    entry: Dict[str, Any],
+    entry: Mapping[str, Any],
     note_path: Optional[Path],
     reason: str,
     pending_merges_path: Path,
@@ -474,10 +886,10 @@ def append_pending_merge(
     payload.setdefault("items", []).append(
         {
             "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "software": entry["software"],
+            "software": entry_software(entry),
             "direction": direction,
-            "local_path": str(Path.home() / Path(str(entry["home_rel"]))),
-            "repo_path": str(repo_dir / Path(str(entry["repo_rel"]))),
+            "local_path": str(HOME / Path(entry_home_rel(entry))),
+            "repo_path": str(repo_dir / Path(entry_repo_rel(entry))),
             "reason": reason,
             "merge_note": str(note_path) if note_path else None,
         }
@@ -487,7 +899,7 @@ def append_pending_merge(
 
 
 def prompt_merge_instructions(
-    entry: Dict[str, Any],
+    entry: Mapping[str, Any],
     auto_yes: bool,
     merge_notes_dir: Path,
     repo_dir: Path,
@@ -513,6 +925,11 @@ def prompt_merge_instructions(
             direction,
         )
     return None
+
+
+# -----------------------------------------------------------------------------
+# Conflict Handling
+# -----------------------------------------------------------------------------
 
 
 def print_operation_records(records: List[OperationRecord]) -> None:
@@ -568,7 +985,7 @@ def choose_conflict_plan(
     print(summary_title)
     for index, conflict in enumerate(conflicts, start=1):
         entry = conflict["entry"]
-        print(f"{index}. {entry['software']}")
+        print(f"{index}. {entry_software(entry)}")
         print(f"   {source_label}: {conflict['source']}")
         print(f"   {target_label}: {conflict['target']}")
 
@@ -634,12 +1051,12 @@ def choose_conflict_decisions(
     for index, conflict in enumerate(conflicts, start=1):
         entry = conflict["entry"]
         print()
-        print(f"{index}. {entry['software']}")
+        print(f"{index}. {entry_software(entry)}")
         print(f"   {source_label}: {conflict['source']}")
         print(f"   {target_label}: {conflict['target']}")
         override_action = choose_conflict_override(default_action)
         action = override_action or default_action
-        decisions[str(entry["repo_rel"])] = {
+        decisions[entry_repo_rel(entry)] = {
             "action": action,
             "override": override_action is not None,
         }
@@ -648,177 +1065,125 @@ def choose_conflict_decisions(
 
 
 def resolve_conflict_action(
-    entry: Dict[str, Any],
+    entry: Mapping[str, Any],
     default_action: str,
     decisions: Dict[str, ConflictDecision],
 ) -> str:
     """Resolve the conflict action for one entry."""
-    decision = decisions.get(str(entry["repo_rel"]))
+    decision = decisions.get(entry_repo_rel(entry))
     if decision:
         return decision["action"]
     return default_action
 
 
-def display_home_path(path: Path) -> str:
-    """Return a stable ~/ prefixed path for display.
+# -----------------------------------------------------------------------------
+# Conflict Detection
+# -----------------------------------------------------------------------------
+
+
+def collect_backup_conflicts(
+    entries: Sequence[ManifestEntry],
+    repo_dir: Path,
+    home_dir: Optional[Path] = None,
+) -> List[ConflictRecord]:
+    """Collect entries whose local and repo versions both exist and differ.
 
     Args:
-        path: Path to format
+        entries: List of manifest entries
+        repo_dir: Repository directory
+        home_dir: Home directory (defaults to HOME)
 
     Returns:
-        String like '~/.config/nvim'
+        List of conflict records
     """
-    rel = relative_to_home(path)
-    return "~/" + rel.as_posix() if rel.as_posix() != "." else "~"
+    resolved_home = home_dir or HOME
+    conflicts: List[ConflictRecord] = []
+
+    for entry in entries:
+        src = resolved_home / path_from_rel(entry_home_rel(entry))
+        dest = repo_dir / path_from_rel(entry_repo_rel(entry))
+        if not src.exists() or not (dest.exists() or dest.is_symlink()):
+            continue
+        if entries_equal(src, dest, entry_is_dir(entry)):
+            continue
+        conflicts.append(
+            {
+                "entry": entry,
+                "source": str(src),
+                "target": str(dest),
+            }
+        )
+
+    return conflicts
 
 
-def infer_category(path: Path) -> str:
-    """Infer repository category for a config path.
+def collect_restore_conflicts(
+    entries: Sequence[ManifestEntry],
+    repo_dir: Path,
+    home_dir: Optional[Path] = None,
+) -> List[ConflictRecord]:
+    """Collect entries whose repo and local versions both exist and differ.
 
     Args:
-        path: Config file or directory path
+        entries: List of manifest entries
+        repo_dir: Repository directory
+        home_dir: Home directory (defaults to HOME)
 
     Returns:
-        Category name (shell, git, editor, terminal, dev, prompt, other)
+        List of conflict records
     """
-    category_rules = [
-        (".zsh", "shell"),
-        (".bash", "shell"),
-        (".profile", "shell"),
-        (".zprofile", "shell"),
-        ("powershell", "shell"),
-        ("Microsoft.PowerShell_profile.ps1", "shell"),
-        ("Microsoft.VSCode_profile.ps1", "shell"),
-        ("fish/config.fish", "shell"),
-        (".config/fish", "shell"),
-        (".gitconfig", "git"),
-        (".gitignore", "git"),
-        (".gitmessage", "git"),
-        (".vim", "editor"),
-        ("nvim", "editor"),
-        ("code/user", "editor"),
-        ("cursor/user", "editor"),
-        ("/zed", "editor"),
-        ("sublime text/packages/user", "editor"),
-        (".editorconfig", "editor"),
-        (".emacs", "editor"),
-        (".tmux", "terminal"),
-        (".inputrc", "terminal"),
-        ("alacritty", "terminal"),
-        ("ghostty", "terminal"),
-        ("kitty", "terminal"),
-        ("wezterm", "terminal"),
-        ("Windows Terminal", "terminal"),
-        ("iterm2", "terminal"),
-        (".npmrc", "dev"),
-        ("npmrc", "dev"),
-        (".cargo", "dev"),
-        (".pylintrc", "dev"),
-        (".flake8", "dev"),
-        (".eslintrc", "dev"),
-        (".prettierrc", "dev"),
-        (".rubocop", "dev"),
-        ("pip.ini", "dev"),
-        ("pip.conf", "dev"),
-        ("pypoetry", "dev"),
-        ("starship", "prompt"),
-        ("oh-my-zsh", "prompt"),
-        ("powerlevel10k", "prompt"),
+    resolved_home = home_dir or HOME
+    conflicts: List[ConflictRecord] = []
+
+    for entry in entries:
+        repo_path = repo_dir / path_from_rel(entry_repo_rel(entry))
+        local_path = resolved_home / path_from_rel(entry_home_rel(entry))
+        if not repo_path.exists() or not (
+            local_path.exists() or local_path.is_symlink()
+        ):
+            continue
+        if entries_equal(repo_path, local_path, entry_is_dir(entry)):
+            continue
+        conflicts.append(
+            {
+                "entry": entry,
+                "source": str(repo_path),
+                "target": str(local_path),
+            }
+        )
+
+    return conflicts
+
+
+# -----------------------------------------------------------------------------
+# Environment Detection
+# -----------------------------------------------------------------------------
+
+
+def detect_environment(repo_dir: Path, manifest: ManifestPayload) -> None:
+    """Print environment detection summary."""
+    config_roots = [
+        "~/.config",
+        "~/Library/Application Support",
+        "~/AppData/Roaming",
+        "~/AppData/Local",
+        "~/Documents/PowerShell",
     ]
-    text = path.as_posix().lower()
-    for pattern, category in category_rules:
-        if pattern.lower() in text:
-            return category
-    return "other"
+    print("Environment detection:")
+    print("- OS: " + platform.system())
+    print("- Home: " + str(HOME))
+    print("- Repo: " + str(repo_dir))
+    print("- Repo exists: " + ("yes" if repo_dir.exists() else "no"))
+    print("- Python configured: " + ("yes" if sys.executable else "no"))
+    print("- Python executable: " + (sys.executable or "not found"))
+    print("- Existing tracked configs: " + str(len(manifest.get("files", []))))
+    print("- Config roots: " + ", ".join(config_roots))
+    print()
 
 
-def infer_software(path: Path) -> str:
-    """Infer a user-facing software name from a config path.
-
-    Args:
-        path: Config file or directory path
-
-    Returns:
-        Software name (e.g., 'VS Code', 'Neovim', 'Zsh')
-    """
-    software_rules = [
-        ("microsoft.powershell_profile.ps1", "PowerShell"),
-        ("microsoft.vscode_profile.ps1", "PowerShell"),
-        ("fish/config.fish", "Fish"),
-        (".config/fish", "Fish"),
-        (".zsh", "Zsh"),
-        (".bash", "Bash"),
-        (".profile", "Shell"),
-        ("windows terminal", "Windows Terminal"),
-        ("iterm2", "iTerm2"),
-        (".tmux", "Tmux"),
-        ("alacritty", "Alacritty"),
-        ("ghostty", "Ghostty"),
-        ("kitty", "Kitty"),
-        ("wezterm", "WezTerm"),
-        (".inputrc", "Readline"),
-        ("code/user", "VS Code"),
-        ("cursor/user", "Cursor"),
-        ("/zed", "Zed"),
-        ("sublime text/packages/user", "Sublime Text"),
-        ("nvim", "Neovim"),
-        (".vim", "Vim"),
-        (".emacs", "Emacs"),
-        (".editorconfig", "EditorConfig"),
-        (".gitconfig", "Git"),
-        (".gitignore", "Git"),
-        (".gitmessage", "Git"),
-        ("starship", "Starship"),
-        ("oh-my-zsh", "Oh My Zsh"),
-        ("powerlevel10k", "Powerlevel10k"),
-        ("npmrc", "npm"),
-        ("pip.ini", "pip"),
-        ("pip.conf", "pip"),
-        ("pypoetry", "Poetry"),
-        (".cargo", "Cargo"),
-        (".pylintrc", "Pylint"),
-        (".flake8", "Flake8"),
-        (".eslintrc", "ESLint"),
-        (".prettierrc", "Prettier"),
-        (".rubocop", "RuboCop"),
-    ]
-    text = path.as_posix().lower()
-    for pattern, software in software_rules:
-        if pattern.lower() in text:
-            return software
-    return path.name or path.as_posix()
-
-
-def repo_relative_path(src: Path, category: str) -> Path:
-    """Map a local config path to its destination inside the repo.
-
-    Args:
-        src: Source path (local config location)
-        category: Category for grouping in repo
-
-    Returns:
-        Relative path like 'editor/.config/nvim'
-    """
-    rel = relative_to_home(src)
-    return Path(category) / rel
-
-
-def detect_supported_platforms(src: Path, software: str) -> Optional[List[str]]:
-    """Infer platform support for a config path.
-
-    Returns None when the config is cross-platform.
-    """
-    text = src.as_posix().lower()
-    software_lower = software.lower()
-
-    if "appdata/" in text or "appdata\\" in str(src).lower():
-        return ["windows"]
-    if "library/application support/" in text:
-        return ["macos"]
-    if "/.config/" in text:
-        if software_lower in {"ghostty", "kitty", "zed", "cursor", "vs code"}:
-            return ["linux"]
-    return None
+# -----------------------------------------------------------------------------
+# Logging Setup
+# -----------------------------------------------------------------------------
 
 
 def setup_logging(verbose: bool) -> None:
@@ -827,11 +1192,38 @@ def setup_logging(verbose: bool) -> None:
     logging.basicConfig(level=level, format="%(message)s")
 
 
+# -----------------------------------------------------------------------------
+# Repo Scaffold
+# -----------------------------------------------------------------------------
+
+
 def ensure_repo_layout(repo_dir: Path) -> None:
     """Ensure the standard synconf directory layout exists."""
     repo_dir.mkdir(parents=True, exist_ok=True)
     for subdir in REPO_SUBDIRECTORIES:
         (repo_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+
+def _safe_copy(src: Path, dest: Path, retries: int = 3) -> bool:
+    """Copy file with retry logic for Windows file locking issues."""
+    import time
+    for attempt in range(retries):
+        try:
+            # On Windows, try removing dest first if it exists and is locked
+            if dest.exists():
+                try:
+                    dest.unlink()
+                except (OSError, PermissionError):
+                    pass
+            shutil.copy2(src, dest)
+            return True
+        except PermissionError as e:
+            if attempt < retries - 1:
+                time.sleep(0.1 * (attempt + 1))
+                continue
+            logger.warning("Cannot copy %s -> %s: %s", src, dest, e)
+            return False
+    return False
 
 
 def copy_runtime_scripts(repo_dir: Path) -> None:
@@ -845,111 +1237,262 @@ def copy_runtime_scripts(repo_dir: Path) -> None:
         if not src.exists():
             logger.warning("Static runtime file missing: %s", src)
             continue
-        shutil.copy2(src, dest)
-        if dest.suffix == ".py":
-            dest.chmod(0o755)
-
-
-def ensure_install_script(repo_dir: Path) -> None:
-    """Ensure install.py exists at the repo root."""
-    install_dest = repo_dir / "install.py"
-    install_src = REPO_TEMPLATE_DIR / "install.py"
-
-    if install_src.exists():
-        shutil.copy2(install_src, install_dest)
-    else:
-        install_dest.write_text(FALLBACK_INSTALL_SCRIPT, encoding="utf-8")
-
-    install_dest.chmod(0o755)
-
-
-def tracked_paths_from_manifest(entries: List[Dict[str, Any]]) -> List[str]:
-    """Return stable display paths for README generation."""
-    tracked_paths: List[str] = []
-    for entry in entries:
-        home_rel = str(entry.get("home_rel", "")).strip()
-        if not home_rel:
+        if not _safe_copy(src, dest):
             continue
-        tracked_paths.append("~/" + home_rel)
-    return sorted(set(tracked_paths))
+        if dest.suffix == ".py":
+            try:
+                dest.chmod(0o755)
+            except OSError:
+                pass  # Windows doesn't support chmod
 
 
-def write_repo_readme(repo_dir: Path, tracked_paths: List[str]) -> None:
+def write_repo_readme(repo_dir: Path) -> None:
     """Write the root README.md for the synconf repo."""
-    configs_block = "\n".join(
-        f"- `{path}`" for path in tracked_paths
-    ) if tracked_paths else "- (none)"
-
-    readme = f"""# Dotfiles
-
-My personal configuration files, managed with copy-based sync.
-
-Repository path: `{repo_dir}`
-
-## Installation
-
-```bash
-cd {repo_dir}
-python3 install.py
-```
-
-On Windows, run `py -3 install.py` from PowerShell.
-
-## Included Configs
-
-{configs_block}
-
-## Usage
-
-### Quick Start
-
-```bash
-# Step 1: Scan for configs and append newly discovered entries to manifest.json
-python3 scripts/scan.py
-
-# Step 2: Review and optionally edit manifest.json
-# You can manually edit manifest.json to add/remove tracked software
-
-# Step 3: Backup selected configs to repo
-python3 scripts/backup.py
-
-# Step 4: (Optional) Restore configs from repo to local
-python3 scripts/restore.py
-
-# Step 5: Sync with Git remote
-python3 scripts/sync.py
-```
-
-### All Commands
-
-- `python3 scripts/scan.py` - Scan home directory and append newly discovered configs to manifest.json without overwriting existing entries
-- `python3 scripts/manage.py --list` - List all tracked software in manifest.json
-- `python3 scripts/backup.py` - Backup local configs to repo and refresh missing scaffold files
-- `python3 scripts/restore.py` - Restore configs with platform filtering
-- `python3 scripts/sync.py` - Run repeated sync rounds with Git push
-- `python3 install.py` - Install all tracked configs to local machine
-
-Tracked software inventory is persisted in `manifest.json`.
-The manifest is human-readable and can be manually edited.
-
-Backup and restore scripts print environment detection details.
-Restore filters out backups for other platforms before confirmation.
-Manual merge follow-ups are tracked in `merge-notes/pending-merges.json`.
-Text configs use `__SYNCONF_HOME__` / `__SYNCONF_HOME_POSIX__` placeholders.
-
-If you later add a remote:
-
-```bash
-git remote add origin <repo-url>
-git push -u origin main
-```
-"""
-    (repo_dir / "README.md").write_text(readme, encoding="utf-8")
+    template_path = TEMPLATES_DIR / "README.md"
+    if template_path.exists():
+        content = template_path.read_text(encoding="utf-8")
+    else:
+        content = "# Dotfiles\n\nManaged with synconf.\n"
+    (repo_dir / "README.md").write_text(content, encoding="utf-8")
 
 
-def ensure_repo_scaffold(repo_dir: Path, tracked_paths: List[str]) -> None:
-    """Ensure a synconf repo has its expected directories and static files."""
+def is_running_from_repo(repo_dir: Path) -> bool:
+    """Check if the current script is running from inside the repo."""
+    try:
+        scripts_dir = SCRIPTS_DIR.resolve()
+        repo_scripts = (repo_dir / "scripts").resolve()
+        return scripts_dir == repo_scripts
+    except (OSError, ValueError):
+        return False
+
+
+def ensure_repo_scaffold(repo_dir: Path) -> None:
+    """Ensure a synconf repo has its expected directories and static files.
+
+    When running from within the repo, only ensures directory layout and
+    skips copying scripts, .gitignore, and README to avoid overwriting
+    user customizations.
+    """
     ensure_repo_layout(repo_dir)
-    copy_runtime_scripts(repo_dir)
-    ensure_install_script(repo_dir)
-    write_repo_readme(repo_dir, tracked_paths)
+    # Skip copying static files if already running from within the repo
+    if not is_running_from_repo(repo_dir):
+        ensure_gitignore(repo_dir)
+        copy_runtime_scripts(repo_dir)
+        write_repo_readme(repo_dir)
+
+
+def ensure_gitignore(repo_dir: Path) -> None:
+    """Create .gitignore with common exclusions if it doesn't exist."""
+    gitignore_path = repo_dir / ".gitignore"
+    if gitignore_path.exists():
+        return
+
+    template_path = TEMPLATES_DIR / "gitignore"
+    if template_path.exists():
+        content = template_path.read_text(encoding="utf-8")
+    else:
+        content = ".state.json\n__pycache__/\n"
+    gitignore_path.write_text(content, encoding="utf-8")
+
+
+# -----------------------------------------------------------------------------
+# Scanning
+# -----------------------------------------------------------------------------
+
+
+# Directories to exclude from editor config backups (cache, history, workspace state)
+EDITOR_EXCLUDE_DIRS = {
+    "History",
+    "Cache",
+    "CachedData",
+    "CachedExtensions",
+    "CachedExtensionVSIXs",
+    "Code Cache",
+    "GPUCache",
+    "Service Worker",
+    "WebStorage",
+    "blob_storage",
+    "databases",
+    "workspaceStorage",
+    "globalStorage",
+    "logs",
+    "Backups",
+    "Crashpad",
+    "DawnCache",
+    "Network",
+    "Session Storage",
+    "Local Storage",
+    "IndexedDB",
+    "__pycache__",
+    ".cache",
+    "node_modules",
+    ".git",
+    "User Data",
+}
+
+
+def _should_exclude_path(path: Path) -> bool:
+    """Check if a path should be excluded from size/count calculations."""
+    for part in path.parts:
+        if part in EDITOR_EXCLUDE_DIRS:
+            return True
+    return False
+
+
+def human_size(path: Path) -> str:
+    """Return human-readable size for a file or directory (excludes cache dirs)."""
+    MAX_FILE_COUNT = 10000
+    try:
+        if path.is_dir():
+            total = 0
+            count = 0
+            for f in path.rglob("*"):
+                if count >= MAX_FILE_COUNT:
+                    break
+                if _should_exclude_path(f):
+                    continue
+                if f.is_file():
+                    try:
+                        total += f.stat().st_size
+                    except (OSError, PermissionError):
+                        pass
+                count += 1
+        else:
+            total = path.stat().st_size
+    except (OSError, PermissionError):
+        return "?"
+
+    for unit in ("B", "KB", "MB", "GB"):
+        if total < 1024:
+            return f"{total:.0f}{unit}" if unit == "B" else f"{total:.1f}{unit}"
+        total /= 1024
+    return f"{total:.1f}TB"
+
+
+def count_files(path: Path, max_count: int = 10000) -> int:
+    """Count files in a directory with a limit for performance (excludes cache dirs)."""
+    try:
+        count = 0
+        for f in path.rglob("*"):
+            if _should_exclude_path(f):
+                continue
+            if f.is_file():
+                count += 1
+                if count >= max_count:
+                    break
+        return count
+    except (OSError, PermissionError):
+        return 0
+
+
+def detect_platforms_for_scan(
+    path: Path,
+    software: str,
+    platform_rules: List[Dict[str, Any]],
+) -> Optional[List[str]]:
+    """Infer which platforms a config path supports during scanning."""
+    combined = " ".join(
+        [
+            path.as_posix().replace("\\", "/").lower(),
+            software.strip().lower(),
+        ]
+    )
+    for rule in platform_rules:
+        if rule["pattern"] in combined:
+            return normalize_platform_list(rule["platforms"])
+    return None
+
+
+def scan_config_path(
+    path_str: str,
+    category_rules: List[Dict[str, str]],
+    software_rules: List[Dict[str, str]],
+    platform_rules: List[Dict[str, Any]],
+    supported_platforms: Optional[Sequence[str]] = None,
+) -> Optional[ManifestEntry]:
+    """Check if a path exists and build a manifest entry."""
+    path = Path(path_str).expanduser()
+    if not path.exists():
+        return None
+
+    is_dir = path.is_dir()
+    rel = relative_to_home(path)
+    category = infer_category(path, category_rules)
+    software = infer_software(path, software_rules)
+    size = human_size(path)
+    file_count = count_files(path) if is_dir else None
+    platforms = merge_supported_platforms(
+        supported_platforms,
+        detect_platforms_for_scan(path, software, platform_rules),
+    )
+    repo_rel = repo_relative_path(
+        path,
+        category,
+        software,
+        is_dir,
+        platforms=platforms,
+    )
+
+    entry: ManifestEntry = {
+        "software": software,
+        "category": category,
+        "repo_rel": repo_rel.as_posix(),
+        "home_rel": rel.as_posix(),
+        "is_dir": is_dir,
+        "size": size,
+    }
+    if file_count is not None:
+        entry["file_count"] = file_count
+    if platforms is not None:
+        entry["platforms"] = platforms
+    return entry
+
+
+def run_scan(config: Optional[Dict[str, Any]] = None) -> List[ManifestEntry]:
+    """Scan for all registered config files and return manifest entries."""
+    if config is None:
+        config = load_config()
+    if not config:
+        return []
+
+    registry: Dict[str, List[Dict[str, str]]] = {}
+    for cat, entries in config.get("config_registry", {}).get("categories", {}).items():
+        registry[cat] = list(entries)
+
+    platform_configs = config.get("platform_specific_configs", {})
+    current_platform = get_current_platform()
+
+    if current_platform in platform_configs:
+        for category, entries in platform_configs[current_platform].items():
+            if category in registry:
+                registry[category].extend(entries)
+            else:
+                registry[category] = list(entries)
+
+    category_rules = get_category_rules(config)
+    software_rules = get_software_rules(config)
+    platform_rules = get_platform_rules(config)
+
+    seen_paths = set()
+    results: List[ManifestEntry] = []
+    for entries in registry.values():
+        for entry in entries:
+            if not entry_supports_platform(entry, current_platform):
+                continue
+            normalized_path = (
+                Path(entry["path"]).expanduser().as_posix().replace("\\", "/").lower()
+            )
+            if normalized_path in seen_paths:
+                continue
+            seen_paths.add(normalized_path)
+            item = scan_config_path(
+                entry["path"],
+                category_rules,
+                software_rules,
+                platform_rules,
+                supported_platforms=entry.get("platforms"),
+            )
+            if item:
+                results.append(item)
+
+    return results

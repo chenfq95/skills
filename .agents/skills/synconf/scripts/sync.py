@@ -11,90 +11,151 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-
-DOTFILES_DIR = Path(__file__).parent.parent.resolve()
-
-
-def run(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
-    """Run a command and return the result."""
-    return subprocess.run(cmd, cwd=DOTFILES_DIR, capture_output=True, text=True, **kwargs)
+from common import prompt_yes_no, resolve_repo_dir
 
 
-def prompt_yes_no(message: str, default: bool = False) -> bool:
-    """Prompt for yes/no confirmation."""
-    suffix = "[Y/n]" if default else "[y/N]"
-    answer = input(message + " " + suffix + " ").strip().lower()
-    if not answer:
-        return default
-    return answer in {"y", "yes"}
+def run(
+    cmd: List[str],
+    repo_dir: Path,
+    capture: bool = False,
+) -> subprocess.CompletedProcess:
+    """Run a command in the repo directory.
+
+    Args:
+        cmd: Command and arguments
+        repo_dir: Working directory
+        capture: If True, capture output; if False, inherit stdio for interaction
+
+    Returns:
+        CompletedProcess result
+    """
+    if capture:
+        return subprocess.run(
+            cmd,
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        )
+    else:
+        # Inherit stdin/stdout/stderr for interactive commands
+        return subprocess.run(
+            cmd,
+            cwd=repo_dir,
+        )
 
 
-def run_backup() -> None:
-    """Run the backup script."""
-    backup_script = DOTFILES_DIR / "scripts" / "backup.py"
-    result = run([sys.executable, str(backup_script)])
-    if result.returncode != 0:
-        print(f"Backup failed: {result.stderr}")
-        sys.exit(1)
-    print(result.stdout, end="")
+def run_backup(repo_dir: Path) -> bool:
+    """Run the backup script interactively.
+
+    Returns:
+        True if successful, False otherwise
+    """
+    backup_script = repo_dir / "scripts" / "backup.py"
+    result = run([sys.executable, str(backup_script)], repo_dir, capture=False)
+    return result.returncode == 0
 
 
-def run_restore() -> None:
-    """Run the restore script."""
-    restore_script = DOTFILES_DIR / "scripts" / "restore.py"
-    result = run([sys.executable, str(restore_script)])
-    if result.returncode != 0:
-        print(f"Restore failed: {result.stderr}")
-        sys.exit(1)
-    print(result.stdout, end="")
+def run_restore(repo_dir: Path) -> bool:
+    """Run the restore script interactively.
+
+    Returns:
+        True if successful, False otherwise
+    """
+    restore_script = repo_dir / "scripts" / "restore.py"
+    result = run([sys.executable, str(restore_script)], repo_dir, capture=False)
+    return result.returncode == 0
 
 
-def commit_and_push() -> bool:
-    """Commit and push changes to remote."""
-    result = run(["git", "add", "-A"])
+def commit_and_push(repo_dir: Path) -> bool:
+    """Commit and push changes to remote.
+
+    Returns:
+        True if changes were committed/pushed, False if no changes
+    """
+    # Stage all changes
+    result = run(["git", "add", "-A"], repo_dir, capture=True)
     if result.returncode != 0:
         print(f"Git add failed: {result.stderr}")
-        sys.exit(1)
+        return False
 
-    result = run(["git", "diff", "--cached", "--quiet"])
+    # Check if there are staged changes
+    result = run(["git", "diff", "--cached", "--quiet"], repo_dir, capture=True)
     if result.returncode == 0:
         print("No changes to sync")
         return False
 
+    # Commit
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    result = run(["git", "commit", "-m", f"Update configs: {timestamp}"])
+    result = run(
+        ["git", "commit", "-m", f"Update configs: {timestamp}"],
+        repo_dir,
+        capture=True,
+    )
     if result.returncode != 0:
         print(f"Git commit failed: {result.stderr}")
-        sys.exit(1)
+        return False
 
-    result = run(["git", "push"])
+    print(f"Committed changes: Update configs: {timestamp}")
+
+    # Push (may fail if no remote configured, which is OK)
+    result = run(["git", "push"], repo_dir, capture=True)
     if result.returncode != 0:
-        print(f"Git push failed: {result.stderr}")
-        sys.exit(1)
+        if "No configured push destination" in result.stderr or "no upstream branch" in result.stderr:
+            print("No remote configured. Skipping push.")
+            print("To add a remote: git -C ~/.synconf remote add origin <url>")
+        else:
+            print(f"Git push failed: {result.stderr}")
+            print("Changes committed locally but not pushed.")
+        return True  # Commit succeeded even if push failed
 
-    print("Dotfiles synced successfully!")
+    print("Changes pushed to remote")
     return True
 
 
-def run_round(round_number: int) -> None:
+def run_round(round_number: int, repo_dir: Path) -> None:
     """Run one sync round."""
-    print(f"=== Sync round {round_number} ===")
-    run_backup()
-    if prompt_yes_no("Run repo-to-local sync after backup?"):
-        run_restore()
-    commit_and_push()
+    print(f"\n{'='*50}")
+    print(f"Sync round {round_number}")
+    print(f"{'='*50}\n")
+
+    if not run_backup(repo_dir):
+        print("\nBackup encountered issues. Continuing anyway...")
+
     print()
+    if prompt_yes_no("Run repo-to-local sync after backup?"):
+        if not run_restore(repo_dir):
+            print("\nRestore encountered issues. Continuing anyway...")
+
+    print()
+    commit_and_push(repo_dir)
 
 
 def main() -> None:
     """Main entry point."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Sync dotfiles with Git")
+    parser.add_argument(
+        "--repo-dir",
+        type=str,
+        help="Target synconf repo (default: ~/.synconf when it exists)",
+    )
+    args = parser.parse_args()
+
+    repo_dir = resolve_repo_dir(args.repo_dir)
+
     print("Syncing dotfiles...")
+    print(f"Repository: {repo_dir}")
+
     round_number = 1
     while True:
-        run_round(round_number)
+        run_round(round_number, repo_dir)
+        print()
         if not prompt_yes_no("Run another sync round?"):
             break
         round_number += 1
+
+    print("\nSync complete!")
 
 
 if __name__ == "__main__":

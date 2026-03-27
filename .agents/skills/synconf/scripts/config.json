@@ -134,8 +134,8 @@
         {"type": "file", "path": "~/.profile"},
         {"type": "file", "path": "~/.bash_aliases"},
         {"type": "file", "path": "~/.zsh_aliases"},
-        {"type": "file", "path": "~/.config/fish/config.fish"},
-        {"type": "dir", "path": "~/.config/fish"}
+        {"type": "file", "path": "~/.config/fish/config.fish", "platforms": ["macos", "linux"]},
+        {"type": "dir", "path": "~/.config/fish", "platforms": ["macos", "linux"]}
       ],
       "Git": [
         {"type": "file", "path": "~/.gitconfig"},
@@ -145,43 +145,38 @@
       "Editor": [
         {"type": "file", "path": "~/.vimrc"},
         {"type": "dir", "path": "~/.vim"},
-        {"type": "dir", "path": "~/.config/nvim"},
-        {"type": "file", "path": "~/.config/zed/settings.json"},
+        {"type": "dir", "path": "~/.config/nvim", "platforms": ["macos", "linux"]},
+        {"type": "file", "path": "~/.config/zed/settings.json", "platforms": ["macos", "linux"]},
+        {"type": "file", "path": "~/.config/zed/keymap.json", "platforms": ["macos", "linux"]},
         {"type": "file", "path": "~/.emacs"},
         {"type": "dir", "path": "~/.emacs.d"}
       ],
       "Terminal": [
         {"type": "file", "path": "~/.tmux.conf"},
         {"type": "dir", "path": "~/.tmux"},
-        {"type": "dir", "path": "~/.config/alacritty"},
-        {"type": "dir", "path": "~/.config/ghostty"},
-        {"type": "dir", "path": "~/.config/kitty"},
-        {"type": "dir", "path": "~/.config/wezterm"},
+        {"type": "dir", "path": "~/.config/alacritty", "platforms": ["macos", "linux"]},
+        {"type": "dir", "path": "~/.config/ghostty", "platforms": ["linux"]},
+        {"type": "dir", "path": "~/.config/kitty", "platforms": ["macos", "linux"]},
+        {"type": "dir", "path": "~/.config/wezterm", "platforms": ["macos", "linux"]},
         {"type": "file", "path": "~/.inputrc"}
       ],
       "Prompt & Theme": [
-        {"type": "file", "path": "~/.config/starship.toml"},
+        {"type": "file", "path": "~/.config/starship.toml", "platforms": ["macos", "linux"]},
         {"type": "dir", "path": "~/.oh-my-zsh/custom"},
-        {"type": "dir", "path": "~/.config/powerlevel10k"}
+        {"type": "dir", "path": "~/.config/powerlevel10k", "platforms": ["macos", "linux"]}
       ],
       "Dev Tools": [
         {"type": "file", "path": "~/.npmrc"},
         {"type": "file", "path": "~/.yarnrc"},
-        {"type": "file", "path": "~/.cargo/config.toml"},
-        {"type": "file", "path": "~/.cargo/config"},
-        {"type": "file", "path": "~/.pip/pip.conf"},
+        {"type": "file", "path": "~/.cargo/config.toml", "platforms": ["macos", "linux"]},
+        {"type": "file", "path": "~/.cargo/config", "platforms": ["macos", "linux"]},
+        {"type": "file", "path": "~/.pip/pip.conf", "platforms": ["macos", "linux"]},
         {"type": "file", "path": "~/.pylintrc"},
         {"type": "file", "path": "~/.flake8"},
         {"type": "file", "path": "~/.rubocop.yml"},
         {"type": "file", "path": "~/.eslintrc"},
         {"type": "file", "path": "~/.prettierrc"},
         {"type": "file", "path": "~/.editorconfig"}
-      ],
-      "Containers & Cloud": [
-        {"type": "dir", "path": "~/.docker"},
-        {"type": "file", "path": "~/.kube/config"},
-        {"type": "dir", "path": "~/.aws"},
-        {"type": "dir", "path": "~/.config/gcloud"}
       ],
       "Package Managers": [
         {"type": "file", "path": "~/.nvmrc"},
@@ -193,7 +188,6 @@
       "Other": [
         {"type": "file", "path": "~/.ssh/config"},
         {"type": "file", "path": "~/.gnupg/gpg-agent.conf"},
-        {"type": "dir", "path": "~/.config/gh"},
         {"type": "file", "path": "~/.wgetrc"},
         {"type": "file", "path": "~/.curlrc"}
       ]
@@ -205,7 +199,6 @@
       "Editor": [
         {"type": "dir", "path": "~/Library/Application Support/Code/User"},
         {"type": "dir", "path": "~/Library/Application Support/Cursor/User"},
-        {"type": "file", "path": "~/Library/Application Support/Zed/settings.json"},
         {"type": "dir", "path": "~/Library/Application Support/Sublime Text/Packages/User"}
       ],
       "Terminal": [
@@ -224,6 +217,7 @@
         {"type": "dir", "path": "~/AppData/Roaming/Code/User"},
         {"type": "dir", "path": "~/AppData/Roaming/Cursor/User"},
         {"type": "file", "path": "~/AppData/Roaming/Zed/settings.json"},
+        {"type": "file", "path": "~/AppData/Roaming/Zed/keymap.json"},
         {"type": "dir", "path": "~/AppData/Roaming/Sublime Text/Packages/User"}
       ],
       "Terminal": [
@@ -244,7 +238,6 @@
       "Editor": [
         {"type": "dir", "path": "~/.config/Code/User"},
         {"type": "dir", "path": "~/.config/Cursor/User"},
-        {"type": "file", "path": "~/.config/zed/settings.json"},
         {"type": "dir", "path": "~/.config/sublime-text/Packages/User"}
       ],
       "Terminal": [
