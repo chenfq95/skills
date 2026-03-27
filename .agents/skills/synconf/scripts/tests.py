@@ -433,7 +433,7 @@ def test_manage_removal_cleans_software_directory() -> None:
 
 
 def test_repo_relative_path_layout() -> None:
-    """Confirm repo paths use category/software layout."""
+    """Confirm repo paths use category/software layout with original names preserved."""
     file_path = common.repo_relative_path(
         Path.home() / ".gitconfig",
         "git",
@@ -449,7 +449,8 @@ def test_repo_relative_path_layout() -> None:
     )
 
     assert file_path.as_posix() == "git/git/.gitconfig"
-    assert dir_path.as_posix() == "editor/vs-code/windows"
+    # Directory preserves its original name under category/software/platform/
+    assert dir_path.as_posix() == "editor/vs-code/windows/User"
 
     print("  [PASS] repo_relative_path_layout")
 

@@ -23,11 +23,13 @@ Manage software configuration backup and restore with a reusable Git repo at `~/
 **Backup:**
 ```bash
 python3 scripts/init_repo.py              # One-time setup
-python3 -c "from common import run_scan; import json; print(json.dumps({'files': run_scan()}, ensure_ascii=False))"
-python3 scripts/manage.py --repo-dir ~/.synconf init --config '<selected-json>' --mode merge
+python3 -c "from scripts.common import run_scan; import json; print(json.dumps({'files': run_scan()}, ensure_ascii=False))"
+python3 scripts/manage.py --repo-dir ~/.synconf -y init --config '<selected-json>' --mode merge
 python3 scripts/backup.py --repo-dir ~/.synconf -y --last-selection
 git -C ~/.synconf add -A && git -C ~/.synconf commit -m "Backup"
 ```
+
+**Note:** The `-y` flag must appear **before** the subcommand (e.g., `-y init`, `-y prune`), not after.
 
 **Restore:**
 ```bash
@@ -39,29 +41,34 @@ python3 ~/.synconf/scripts/restore.py
 
 | Command | Description |
 |---------|-------------|
-| `manage.py init --config '{"files":[...]}' --mode merge` | Write a selected subset into the manifest with merge strategy |
+| `manage.py -y init --config '{"files":[...]}' --mode merge` | Write a selected subset into the manifest (non-interactive) |
 | `manage.py init --dry-run` | Preview scan without changes |
 | `manage.py list` | List tracked software |
 | `manage.py select` | Review already tracked entries and remove ones you no longer want |
-| `manage.py prune 2,4` | Remove entries by index (also deletes repo backups) |
-| `backup.py` | Backup local → repo with per-software confirmation |
+| `manage.py -y prune 2,4` | Remove entries by index (also deletes repo backups) |
+| `backup.py -y` | Backup local → repo (non-interactive) |
 | `backup.py --only .zshrc` | Backup specific entries only |
-| `backup.py --last-selection` | Backup only the subset selected by the latest `manage.py init` |
+| `backup.py -y --last-selection` | Backup only the subset selected by the latest `manage.py init` |
 | `restore.py` | Restore repo → local with platform filtering |
 | `sync.py` | Multi-round interactive backup/restore |
 
-All commands support `-y` for non-interactive mode, **except `select`** which requires explicit user choice.
+All commands support `-y` for non-interactive mode, **except `select`** which requires explicit user choice. The `-y` flag must appear before the subcommand.
 
 ## Agent Execution Flow
 
-1. Scan the machine for syncable software configs and format the results as JSON
-2. Show a numbered list to the user and ask which entries to include
+1. Scan the machine for syncable software configs:
+   ```bash
+   python3 -c "from scripts.common import run_scan; import json; print(json.dumps({'files': run_scan()}, ensure_ascii=False))"
+   ```
+2. Show a numbered list to the user and ask which entries to include (by index)
 3. Build a JSON payload containing only the confirmed entries
-4. Run `manage.py --repo-dir ~/.synconf init --config '<selected-json>' --mode merge`
-5. Run `backup.py --repo-dir ~/.synconf --last-selection` to back up exactly that subset
+4. Run `manage.py --repo-dir ~/.synconf -y init --config '<selected-json>' --mode merge`
+5. Run `backup.py --repo-dir ~/.synconf -y --last-selection` to back up exactly that subset
 6. Print checklist: completed actions, pending merges, next Git commands
 
-When operating from the skill source tree, prefer a Python one-liner that imports `run_scan()` from `scripts/common.py` to collect scan results, then pass the selected subset back through `manage.py init --config ... --mode merge`.
+When operating from the skill source tree, always use `from scripts.common import run_scan` (not `from common import ...`).
+
+**Important:** The `-y` flag must be placed **before** the subcommand to work correctly.
 
 `manage.py init --select ...` remains available as a lower-level script shortcut, but agents should prefer the JSON-to-`--config` flow so the selected entries are explicit in the command invocation.
 
@@ -81,6 +88,12 @@ When operating from the skill source tree, prefer a Python one-liner that import
     ├── restore.py      # Repo → local
     └── sync.py         # Multi-round sync
 ```
+
+**Directory structure rule:** Both files and directories preserve their original names under `category/software/`. For example:
+- `~/.vimrc` (file) → `editor/vim/.vimrc`
+- `~/.vim` (directory) → `editor/vim/.vim/`
+
+This prevents conflicts when a software has both a config file and a config directory.
 
 ## Supported Software
 

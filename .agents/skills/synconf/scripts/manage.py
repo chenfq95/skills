@@ -22,7 +22,10 @@ from common import (
     ManifestEntry,
     ManifestPayload,
     StatePayload,
+    detect_supported_platforms_from_entry,
     format_platform_name,
+    get_current_platform,
+    get_platform_rules,
     load_manifest,
     load_state,
     manifest_entry_identity,
@@ -32,6 +35,42 @@ from common import (
     save_manifest,
     save_state,
 )
+
+
+def filter_entries_for_current_platform(
+    entries: List[ManifestEntry],
+) -> Tuple[List[ManifestEntry], List[ManifestEntry]]:
+    """Filter entries to those supported by the current platform.
+
+    Returns:
+        Tuple of (supported_entries, skipped_entries)
+    """
+    current_platform = get_current_platform()
+    platform_rules = get_platform_rules()
+    supported = []
+    skipped = []
+
+    for entry in entries:
+        platforms = detect_supported_platforms_from_entry(entry, platform_rules)
+        if platforms and current_platform not in platforms:
+            skipped.append(entry)
+        else:
+            supported.append(entry)
+
+    return supported, skipped
+
+
+def report_platform_skipped(skipped: List[ManifestEntry]) -> None:
+    """Print list of entries skipped due to platform mismatch."""
+    if not skipped:
+        return
+    platform_rules = get_platform_rules()
+    print("Skipping configs that do not support this platform:")
+    for entry in skipped:
+        platforms = detect_supported_platforms_from_entry(entry, platform_rules) or []
+        platform_label = ", ".join(format_platform_name(p) for p in platforms)
+        print(f"  - {entry.get('software', 'Unknown')} (supported: {platform_label})")
+    print()
 
 
 def get_selection_view(
@@ -161,10 +200,18 @@ def list_software(
         print("\nRun 'python3 scripts/manage.py init' to scan configs first.")
         return
 
+    # Filter to current platform
+    supported, skipped = filter_entries_for_current_platform(files)
+    report_platform_skipped(skipped)
+
+    if not supported:
+        print("No software tracked for this platform in manifest.json")
+        return
+
     print("Tracked software in manifest.json:")
     print()
 
-    for index, entry in enumerate(files, start=1):
+    for index, entry in enumerate(supported, start=1):
         repo_path = repo_dir / str(entry.get("repo_rel", ""))
         local_path = HOME / str(entry.get("home_rel", ""))
         repo_exists = repo_path.exists()
@@ -183,7 +230,7 @@ def list_software(
         print(f"   status: {', '.join(status)}")
         print()
 
-    print(f"Total: {len(files)} software entries")
+    print(f"Total: {len(supported)} software entries for this platform")
 
 
 def parse_remove_indices(raw_value: str, total_count: int) -> List[int]:
@@ -272,8 +319,16 @@ def select_configs(
         print("\nRun 'python3 scripts/manage.py init' to scan configs first.")
         return
 
+    # Filter to current platform
+    supported, skipped = filter_entries_for_current_platform(files)
+    report_platform_skipped(skipped)
+
+    if not supported:
+        print("No configs for this platform found in manifest.json")
+        return
+
     print("Select which configs to track:")
-    print(f"Found {len(files)} entries in manifest.json")
+    print(f"Found {len(supported)} entries for this platform in manifest.json")
     if using_scan_order:
         print("Order matches the most recent scan.")
     print()
@@ -281,7 +336,7 @@ def select_configs(
     to_keep: List[ManifestEntry] = []
     to_remove: List[ManifestEntry] = []
 
-    for index, entry in enumerate(files, start=1):
+    for index, entry in enumerate(supported, start=1):
         local_path = HOME / str(entry.get("home_rel", ""))
         local_exists = local_path.exists()
         platforms = entry.get("platforms")
@@ -305,6 +360,8 @@ def select_configs(
             to_remove.append(entry)
         print()
 
+    # Add back skipped platform entries to keep list (they stay in manifest)
+    to_keep.extend(skipped)
     _apply_removals(manifest, repo_dir, manifest_path, to_keep, to_remove)
 
 
@@ -322,12 +379,20 @@ def prune_configs(
         print("No configs found in manifest.json")
         return
 
+    # Filter to current platform
+    supported, skipped = filter_entries_for_current_platform(files)
+    report_platform_skipped(skipped)
+
+    if not supported:
+        print("No configs for this platform found in manifest.json")
+        return
+
     remove_set = set(remove_indices)
     to_keep: List[ManifestEntry] = []
     to_remove: List[ManifestEntry] = []
 
     print("Entries to remove:")
-    for index, entry in enumerate(files, start=1):
+    for index, entry in enumerate(supported, start=1):
         if index in remove_set:
             print(
                 f"  {index}. {entry.get('software', 'Unknown')} ({entry.get('category', 'other')})"
@@ -347,6 +412,8 @@ def prune_configs(
         print("No changes made.")
         return
 
+    # Add back skipped platform entries to keep list (they stay in manifest)
+    to_keep.extend(skipped)
     _apply_removals(manifest, repo_dir, manifest_path, to_keep, to_remove)
 
 

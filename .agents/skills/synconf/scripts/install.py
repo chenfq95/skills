@@ -6,17 +6,56 @@ then copies them from the repo to the local machine, backing up existing files.
 """
 
 import json
+import platform
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 
-DOTFILES_DIR = Path(__file__).resolve().parent
+DOTFILES_DIR = Path(__file__).resolve().parent.parent
 BACKUP_DIR = Path.home() / ".synconf-backup" / datetime.now().strftime("%Y%m%d-%H%M%S")
 MANIFEST_PATH = DOTFILES_DIR / "manifest.json"
 HOME_TOKEN = "__SYNCONF_HOME__"
 HOME_POSIX_TOKEN = "__SYNCONF_HOME_POSIX__"
+
+
+def get_current_platform() -> str:
+    """Return the normalized current platform name."""
+    system = platform.system().lower()
+    if system == "darwin":
+        return "macos"
+    return system
+
+
+def normalize_platform_name(name: str) -> str:
+    """Normalize platform labels for consistent comparison."""
+    normalized = name.lower().strip()
+    if normalized in ("darwin", "mac", "osx"):
+        return "macos"
+    if normalized in ("win32", "win", "win64", "nt"):
+        return "windows"
+    return normalized
+
+
+def filter_entries_for_platform(
+    entries: List[Dict[str, object]],
+) -> Tuple[List[Dict[str, object]], List[Dict[str, object]]]:
+    """Filter entries to those supported by the current platform."""
+    current = get_current_platform()
+    supported = []
+    skipped = []
+
+    for entry in entries:
+        platforms = entry.get("platforms")
+        if platforms:
+            normalized = [normalize_platform_name(str(p)) for p in platforms]
+            if current not in normalized:
+                skipped.append(entry)
+                continue
+        supported.append(entry)
+
+    return supported, skipped
 
 
 def path_from_rel(path_str: str) -> Path:
@@ -137,7 +176,22 @@ def main() -> None:
         print("No configs found in manifest.json. Nothing to install.")
         return
 
-    for entry in files:
+    # Filter to current platform
+    supported, skipped = filter_entries_for_platform(files)
+
+    if skipped:
+        print("Skipping configs that do not support this platform:")
+        for entry in skipped:
+            platforms = entry.get("platforms", [])
+            platform_label = ", ".join(str(p).title() for p in platforms)
+            print(f"  - {entry.get('software', 'Unknown')} (supported: {platform_label})")
+        print()
+
+    if not supported:
+        print("No configs for this platform found in manifest.json.")
+        return
+
+    for entry in supported:
         src = DOTFILES_DIR / path_from_rel(entry["repo_rel"])
         dst = Path.home() / path_from_rel(entry["home_rel"])
         if src.exists():

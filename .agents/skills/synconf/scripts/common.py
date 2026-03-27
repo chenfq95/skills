@@ -579,8 +579,7 @@ def repo_relative_path(
     platform_component = platform_path_component(platforms)
     if platform_component:
         repo_root = repo_root / platform_component
-    if is_dir:
-        return repo_root
+    # Both files and directories keep their original name under repo_root
     return repo_root / src.name
 
 

@@ -10,7 +10,7 @@ import os
 import shutil
 import stat
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from common import (
     EDITOR_EXCLUDE_DIRS,
@@ -23,12 +23,16 @@ from common import (
     choose_conflict_plan,
     collect_backup_conflicts,
     detect_environment,
+    detect_supported_platforms_from_entry,
     entry_home_rel,
     entry_is_dir,
     entry_repo_rel,
     entry_software,
     entries_equal,
     ensure_repo_scaffold,
+    format_platform_name,
+    get_current_platform,
+    get_platform_rules,
     load_manifest,
     load_state,
     manifest_entry_identity,
@@ -176,8 +180,27 @@ def filter_entries(
     entries: List[ManifestEntry],
     only_filters: Optional[str],
     last_selected_repo_rels: Optional[List[str]] = None,
-) -> List[ManifestEntry]:
-    """Restrict entries to an explicit subset when requested."""
+) -> Tuple[List[ManifestEntry], List[ManifestEntry]]:
+    """Restrict entries to an explicit subset when requested.
+
+    Returns:
+        Tuple of (filtered_entries, platform_skipped_entries)
+    """
+    # First filter by platform
+    current_platform = get_current_platform()
+    platform_rules = get_platform_rules()
+    platform_supported = []
+    platform_skipped = []
+
+    for entry in entries:
+        platforms = detect_supported_platforms_from_entry(entry, platform_rules)
+        if platforms and current_platform not in platforms:
+            platform_skipped.append(entry)
+        else:
+            platform_supported.append(entry)
+
+    entries = platform_supported
+
     if last_selected_repo_rels:
         selected_set = set(last_selected_repo_rels)
         entries = [
@@ -190,7 +213,7 @@ def filter_entries(
             )
 
     if not only_filters:
-        return entries
+        return entries, platform_skipped
 
     requested = [item.strip() for item in only_filters.split(",") if item.strip()]
     chosen = [entry for entry in entries if matches_only_filter(entry, requested)]
@@ -200,7 +223,7 @@ def filter_entries(
             "No manifest entries matched --only. "
             "Use software names, home_rel, or repo_rel values."
         )
-    return chosen
+    return chosen, platform_skipped
 
 
 def main() -> None:
@@ -246,7 +269,7 @@ def main() -> None:
             )
 
     try:
-        available_entries = filter_entries(
+        available_entries, platform_skipped = filter_entries(
             manifest.get("files", []),
             args.only,
             last_selected_repo_rels=last_selected_repo_rels,
@@ -258,6 +281,16 @@ def main() -> None:
     print(f"Repository: {repo_dir}")
     print()
     detect_environment(repo_dir, manifest)
+
+    if platform_skipped:
+        print()
+        print("Skipping configs that do not support this platform:")
+        platform_rules = get_platform_rules()
+        for entry in platform_skipped:
+            platforms = detect_supported_platforms_from_entry(entry, platform_rules) or []
+            platform_label = ", ".join(format_platform_name(p) for p in platforms)
+            print(f"  - {entry_software(entry)} (supported: {platform_label})")
+        print()
 
     selected_entries = choose_entries(available_entries, repo_dir, auto_yes)
     if not selected_entries:
