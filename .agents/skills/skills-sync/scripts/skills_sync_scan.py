@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-REGISTRY_SOURCE_TYPES = {"registry", "byted", "marketplace"}
+REGISTRY_SOURCE_TYPES = {"registry", "marketplace"}
 
 
 def get_home_dir() -> Path:
@@ -28,6 +28,8 @@ def normalize_source_type(source_type: str) -> str:
     """Normalize source type to standard values."""
     if not source_type:
         return "local"
+    if source_type.lower() == "byted":
+        return "byted"
     if source_type.lower() in REGISTRY_SOURCE_TYPES:
         return "registry"
     return source_type.lower()
@@ -67,12 +69,15 @@ def scan_all_skills() -> Dict[str, Dict[str, Any]]:
     agents_skills = scan_skills_directory(home / ".agents" / "skills")
     claude_skills = scan_skills_directory(home / ".claude" / "skills")
 
-    all_skill_names = set(lock_skills.keys()) | set(agents_skills.keys()) | set(claude_skills.keys())
+    all_skill_names = (
+        set(lock_skills.keys()) | set(agents_skills.keys()) | set(claude_skills.keys())
+    )
 
     for name in all_skill_names:
         skill_info: Dict[str, Any] = {
             "name": name,
             "source": "",
+            "source_url": "",
             "source_type": "local",
             "skill_path": "",
             "location": [],
@@ -82,7 +87,10 @@ def scan_all_skills() -> Dict[str, Dict[str, Any]]:
         if name in lock_skills:
             lock_info = lock_skills[name]
             skill_info["source"] = lock_info.get("source", "")
-            skill_info["source_type"] = normalize_source_type(lock_info.get("sourceType", ""))
+            skill_info["source_url"] = lock_info.get("sourceUrl", "")
+            skill_info["source_type"] = normalize_source_type(
+                lock_info.get("sourceType", "")
+            )
             skill_info["skill_path"] = lock_info.get("skillPath", "")
             skill_info["plugin_name"] = lock_info.get("pluginName")
 
@@ -152,7 +160,9 @@ def parse_skill_selection(
     return selected, invalid
 
 
-def prompt_skill_selection(skills: Dict[str, Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+def prompt_skill_selection(
+    skills: Dict[str, Dict[str, Any]],
+) -> Optional[List[Dict[str, Any]]]:
     """Prompt the user to choose which scanned skills to export."""
     sorted_skills = get_sorted_skills(skills)
     if not sorted_skills:
@@ -170,7 +180,9 @@ def prompt_skill_selection(skills: Dict[str, Dict[str, Any]]) -> Optional[List[D
             )
 
         print("\nSelect the skills to export to YAML.")
-        print("Enter comma-separated numbers or skill names, or 'all' for every discovered skill.")
+        print(
+            "Enter comma-separated numbers or skill names, or 'all' for every discovered skill."
+        )
         try:
             selection = input("> ").strip()
         except EOFError:
@@ -198,7 +210,9 @@ def prompt_skill_selection(skills: Dict[str, Dict[str, Any]]) -> Optional[List[D
             print(f"  - {skill['name']} ({skill['source_type']})")
 
         try:
-            confirm = input("Generate skills.yaml with these skills? [y/N]: ").strip().lower()
+            confirm = (
+                input("Generate skills.yaml with these skills? [y/N]: ").strip().lower()
+            )
         except EOFError:
             print(
                 "Interactive confirmation requires a terminal. Use --skills for non-interactive selection.",

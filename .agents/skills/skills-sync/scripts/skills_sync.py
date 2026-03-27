@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan installed skills and export selected skills to YAML, or restore directly from YAML."""
+"""Scan installed skills, export YAML plus a restore script, or restore from YAML."""
 
 import argparse
 import sys
@@ -31,13 +31,13 @@ def main() -> int:
     parser.add_argument(
         "--scan",
         action="store_true",
-        help="Scan and output discovered skills as JSON",
+        help="Scan and output discovered non-local skills as JSON, including source URLs",
     )
     parser.add_argument(
         "--output-yaml",
         type=Path,
         metavar="PATH",
-        help="After scanning, interactively choose skills and export the confirmed selection to a YAML file",
+        help="After scanning, export the confirmed selection to a YAML file plus restore_skills.py",
     )
     parser.add_argument(
         "--from-yaml",
@@ -56,9 +56,13 @@ def main() -> int:
     if args.scan and args.output_yaml:
         all_skills = scan_all_skills()
         if args.skills:
-            selected_skills, invalid = parse_skill_selection(args.skills, get_sorted_skills(all_skills))
+            selected_skills, invalid = parse_skill_selection(
+                args.skills, get_sorted_skills(all_skills)
+            )
             if invalid:
-                print(f"Error: Invalid selection: {', '.join(invalid)}", file=sys.stderr)
+                print(
+                    f"Error: Invalid selection: {', '.join(invalid)}", file=sys.stderr
+                )
                 return 1
             if not selected_skills:
                 print("Error: No valid skills selected", file=sys.stderr)

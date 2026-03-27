@@ -9,7 +9,7 @@ description: >-
 
 # Skills Sync
 
-Scan locally installed skills from `~/.agents/` and `~/.claude/` directories, export the selected non-local skills to a YAML metadata file plus a companion Python restore script, then restore either with that generated script or directly from YAML.
+Scan locally installed skills from `~/.agents/` and `~/.claude/` directories, export the selected non-local skills to a YAML metadata file plus a companion Python restore script, then restore either with that generated script or directly from YAML. Exported metadata includes the download URL so registry-backed skills can still be restored when a short source identifier is not enough.
 
 ## Workflow
 
@@ -59,7 +59,7 @@ This remains available if the user wants to restore without the generated script
 
 | Parameter | Description |
 |-----------|-------------|
-| `--scan` | Scan and output discovered non-local skills as JSON |
+| `--scan` | Scan and output discovered non-local skills as JSON, including source URLs |
 | `--output-yaml <path>` | After scanning, choose non-local skills and export both `skills.yaml` and `restore_skills.py` |
 | `--from-yaml <path>` | Restore skills directly from a YAML file |
 | `--skills <names>` | Comma-separated skill names to export without prompts |
@@ -71,7 +71,8 @@ version: 1  # Schema version
 skills:
   - name: string        # Skill name (required)
     source: string      # Source identifier (e.g., "owner/repo")
-    source_type: string # "github" | "registry" | "local"
+    source_url: string  # Download URL or collection URL used for restore fallback
+    source_type: string # "github" | "registry" | "byted" | "local"
     skill_path: string  # Path to SKILL.md in source repo
     plugin_name: string # Optional plugin name
     enabled: boolean    # Whether to include in restore (default: true)
@@ -82,5 +83,8 @@ skills:
 - Scans both `~/.agents/` and `~/.claude/` directories
 - Pure local skills are ignored during scan/export because they cannot be auto-restored
 - Export writes both `skills.yaml` and a portable `restore_skills.py`
+- Byted-hosted skills preserve `source_type: byted` and restore directly with `npx skills add skills.byted.org/... --skill ...`, which matches the CLI's working install path
+- Generated YAML includes a note that `source_type: byted` uses the dedicated restore path, and restore logs explicitly announce when that mode is selected
+- Other registry skills retain `source_url` so restore can fall back across collection and direct skill install paths when the short `source` identifier is missing, ambiguous, fails, or reports success without actually installing the requested skill
 - YAML file can be version-controlled and shared
 - Restore requires `npx` and the `skills` npm package
