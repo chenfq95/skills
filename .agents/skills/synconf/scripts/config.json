@@ -30,7 +30,7 @@
       {"pattern": "ghostty", "category": "terminal"},
       {"pattern": "kitty", "category": "terminal"},
       {"pattern": "wezterm", "category": "terminal"},
-      {"pattern": "Windows Terminal", "category": "terminal"},
+      {"pattern": "microsoft.windowsterminal", "category": "terminal"},
       {"pattern": "iterm2", "category": "terminal"},
       {"pattern": ".npmrc", "category": "dev"},
       {"pattern": "npmrc", "category": "dev"},
@@ -58,7 +58,7 @@
       {"pattern": ".zsh", "software": "Zsh"},
       {"pattern": ".bash", "software": "Bash"},
       {"pattern": ".profile", "software": "Shell"},
-      {"pattern": "windows terminal", "software": "Windows Terminal"},
+      {"pattern": "microsoft.windowsterminal", "software": "Windows Terminal", "platforms": ["windows"]},
       {"pattern": "iterm2", "software": "iTerm2"},
       {"pattern": ".tmux", "software": "Tmux"},
       {"pattern": "alacritty", "software": "Alacritty"},
@@ -101,11 +101,10 @@
       {"pattern": "appdata/roaming/sublime text/packages/user", "platforms": ["windows"]},
       {"pattern": "appdata/roaming/ghostty", "platforms": ["windows"]},
       {"pattern": "appdata/roaming/npm/npmrc", "platforms": ["windows"]},
-      {"pattern": "appdata/local/microsoft/windows terminal", "platforms": ["windows"]},
+      {"pattern": "appdata/local/packages/microsoft.windowsterminal", "platforms": ["windows"]},
       {"pattern": "documents/windowspowershell/", "platforms": ["windows"]},
       {"pattern": "documents/powershell/microsoft.powershell_profile.ps1", "platforms": ["windows"]},
       {"pattern": "documents/powershell/microsoft.vscode_profile.ps1", "platforms": ["windows"]},
-      {"pattern": "microsoft/windows terminal", "platforms": ["windows"]},
       {"pattern": "/pip/pip.ini", "platforms": ["windows"]},
       {"pattern": "library/application support/code/user", "platforms": ["macos"]},
       {"pattern": "library/application support/cursor/user", "platforms": ["macos"]},
@@ -221,7 +220,8 @@
         {"type": "dir", "path": "~/AppData/Roaming/Sublime Text/Packages/User"}
       ],
       "Terminal": [
-        {"type": "dir", "path": "~/AppData/Local/Microsoft/Windows Terminal"},
+        {"type": "dir", "path": "~/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState"},
+        {"type": "dir", "path": "~/AppData/Local/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState"},
         {"type": "dir", "path": "~/AppData/Roaming/ghostty"}
       ],
       "Dev Tools": [

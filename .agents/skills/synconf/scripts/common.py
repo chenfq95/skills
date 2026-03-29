@@ -6,19 +6,18 @@ Compatible with Python 3.8+ (avoids 3.9+ type syntax).
 """
 
 import difflib
-import fcntl
 import json
 import logging
 import os
 import platform
 import shutil
-import signal
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
     Generator,
@@ -41,6 +40,12 @@ HOME = Path.home()
 IS_MACOS = platform.system() == "Darwin"
 IS_WINDOWS = platform.system() == "Windows"
 IS_LINUX = platform.system() == "Linux"
+
+# Unix-only imports - use TYPE_CHECKING to satisfy static analyzers
+if TYPE_CHECKING or not IS_WINDOWS:
+    import fcntl
+    import signal
+
 DEFAULT_REPO_DIR = HOME / ".synconf"
 SCRIPTS_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = SCRIPTS_DIR.parent / "templates"
@@ -180,57 +185,6 @@ class FileLockError(Exception):
 
 
 @contextmanager
-def file_lock(
-    path: Path,
-    timeout: float = 10.0,
-    shared: bool = False,
-) -> Generator[None, None, None]:
-    """Context manager for file-based locking.
-
-    Args:
-        path: Path to the file to lock (a .lock file will be created)
-        timeout: Maximum time to wait for lock in seconds
-        shared: If True, acquire a shared (read) lock; otherwise exclusive (write)
-
-    Raises:
-        FileLockError: If lock cannot be acquired within timeout
-    """
-    lock_path = path.parent / f".{path.name}.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-
-    lock_type = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
-    lock_fd = None
-
-    try:
-        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
-
-        # Set up alarm for timeout (Unix only)
-        def timeout_handler(signum: int, frame: Any) -> None:
-            raise FileLockError(f"Timeout acquiring lock on {path}")
-
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(int(timeout))
-
-        try:
-            fcntl.flock(lock_fd, lock_type)
-        finally:
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
-
-        yield
-
-    finally:
-        if lock_fd is not None:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            os.close(lock_fd)
-            # Clean up lock file if possible
-            try:
-                lock_path.unlink()
-            except OSError:
-                pass
-
-
-@contextmanager
 def file_lock_windows(
     path: Path,
     timeout: float = 10.0,
@@ -241,10 +195,63 @@ def file_lock_windows(
     yield
 
 
+if IS_WINDOWS:
+    # On Windows, use the no-op fallback
+    file_lock = file_lock_windows
+else:
+    @contextmanager
+    def file_lock(
+        path: Path,
+        timeout: float = 10.0,
+        shared: bool = False,
+    ) -> Generator[None, None, None]:
+        """Context manager for file-based locking (Unix only).
+
+        Args:
+            path: Path to the file to lock (a .lock file will be created)
+            timeout: Maximum time to wait for lock in seconds
+            shared: If True, acquire a shared (read) lock; otherwise exclusive (write)
+
+        Raises:
+            FileLockError: If lock cannot be acquired within timeout
+        """
+        lock_path = path.parent / f".{path.name}.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+        lock_type = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+        lock_fd = None
+
+        try:
+            lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+
+            # Set up alarm for timeout (Unix only)
+            def timeout_handler(signum: int, frame: Any) -> None:
+                raise FileLockError(f"Timeout acquiring lock on {path}")
+
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(int(timeout))
+
+            try:
+                fcntl.flock(lock_fd, lock_type)
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+
+            yield
+
+        finally:
+            if lock_fd is not None:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+                # Clean up lock file if possible
+                try:
+                    lock_path.unlink()
+                except OSError:
+                    pass
+
+
 def get_file_lock() -> Any:
     """Return the appropriate file lock context manager for the platform."""
-    if IS_WINDOWS:
-        return file_lock_windows
     return file_lock
 
 
