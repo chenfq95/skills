@@ -38,6 +38,11 @@
       "expected_output": "Scan detects Ghostty and Zed config paths, includes them in numbered selection."
     },
     {
+      "id": 7.1,
+      "prompt": "把 zimfw 的配置也纳入 synconf 管理",
+      "expected_output": "Scan detects `~/.zimrc` as ZimFW under the prompt/theme category and includes it in the numbered selection."
+    },
+    {
       "id": 8,
       "prompt": "Zed 只跟踪 settings.json，不要整个目录",
       "expected_output": "Config registry tracks only Zed's `settings.json`, not the full directory."

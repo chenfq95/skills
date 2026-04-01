@@ -498,6 +498,28 @@ def test_zed_cross_platform_paths() -> None:
     print("  [PASS] zed_cross_platform_paths")
 
 
+def test_zimfw_registry_support() -> None:
+    """Confirm ZimFW is included in the default prompt/theme scan registry."""
+    config = common.load_config()
+
+    prompt_entries = config["config_registry"]["categories"]["Prompt & Theme"]
+    prompt_paths = [item["path"] for item in prompt_entries]
+    category_rules = config["category_rules"]["rules"]
+    software_rules = config["software_rules"]["rules"]
+
+    assert "~/.zimrc" in prompt_paths
+    assert any(
+        rule["pattern"] == ".zimrc" and rule["category"] == "prompt"
+        for rule in category_rules
+    )
+    assert any(
+        rule["pattern"] == ".zimrc" and rule["software"] == "ZimFW"
+        for rule in software_rules
+    )
+
+    print("  [PASS] zimfw_registry_support")
+
+
 def test_run_scan_filters_registry_platforms() -> None:
     """Confirm scan ignores registry paths that do not support the current OS."""
     with tempfile.TemporaryDirectory(prefix="synconf-test-") as temp_dir:
@@ -574,6 +596,7 @@ def main() -> None:
         test_manage_removal_cleans_software_directory,
         test_repo_relative_path_layout,
         test_zed_cross_platform_paths,
+        test_zimfw_registry_support,
         test_run_scan_filters_registry_platforms,
     ]
 

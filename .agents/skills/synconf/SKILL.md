@@ -106,7 +106,7 @@ This prevents conflicts when a software has both a config file and a config dire
 
 ## Supported Software
 
-Zsh, Bash, PowerShell, Git, Vim, Neovim, VS Code, Cursor, Zed, Sublime Text, Tmux, Alacritty, Ghostty, Kitty, WezTerm, Windows Terminal, npm, Cargo, pip, EditorConfig, ESLint, Prettier
+Zsh, Bash, ZimFW, PowerShell, Git, Vim, Neovim, VS Code, Cursor, Zed, Sublime Text, Tmux, Alacritty, Ghostty, Kitty, WezTerm, Windows Terminal, npm, Cargo, pip, EditorConfig, ESLint, Prettier
 
 See `scripts/config.json` for complete path mappings.
 

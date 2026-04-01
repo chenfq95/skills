@@ -43,6 +43,7 @@
       {"pattern": "pip.ini", "category": "dev"},
       {"pattern": "pip.conf", "category": "dev"},
       {"pattern": "pypoetry", "category": "dev"},
+      {"pattern": ".zimrc", "category": "prompt"},
       {"pattern": "starship", "category": "prompt"},
       {"pattern": "oh-my-zsh", "category": "prompt"},
       {"pattern": "powerlevel10k", "category": "prompt"}
@@ -77,6 +78,7 @@
       {"pattern": ".gitconfig", "software": "Git"},
       {"pattern": ".gitignore", "software": "Git"},
       {"pattern": ".gitmessage", "software": "Git"},
+      {"pattern": ".zimrc", "software": "ZimFW"},
       {"pattern": "starship", "software": "Starship"},
       {"pattern": "oh-my-zsh", "software": "Oh My Zsh"},
       {"pattern": "powerlevel10k", "software": "Powerlevel10k"},
@@ -160,6 +162,7 @@
         {"type": "file", "path": "~/.inputrc"}
       ],
       "Prompt & Theme": [
+        {"type": "file", "path": "~/.zimrc"},
         {"type": "file", "path": "~/.config/starship.toml", "platforms": ["macos", "linux"]},
         {"type": "dir", "path": "~/.oh-my-zsh/custom"},
         {"type": "dir", "path": "~/.config/powerlevel10k", "platforms": ["macos", "linux"]}
