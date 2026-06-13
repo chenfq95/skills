@@ -56,7 +56,7 @@ Hard project-wide constraints that every session must obey are not "rules in a f
 | Resource | Native auto-load | Route-driven active Read |
 |---|---|---|
 | L1 root `AGENTS.md` | Codex / Cursor / opencode (and Trae once toggle is on) | Claude via `@AGENTS.md` from `CLAUDE.md` |
-| L1 root `.agents/rules/*` | **None** — no tool auto-scans `.agents/rules/` | All tools — via the root AGENTS.md's **Rules Reference** table |
+| L1 root `.agents/rules/*` | Claude / Trae auto-load when the canonical files are bridged into `.claude/rules/` and `.trae/rules/` (directory symlinks); Cursor when each rule has a corresponding `.mdc` shim in `.cursor/rules/`. See [`rules.md`](rules.md) §2.3.1 | Codex / opencode — via the root AGENTS.md's **Rules Reference** table (no native rules system to bridge into) |
 | L1 root `.agents/skills/*` | **5 native readers** via SKILL.md `description` (Codex / Cursor 2.4+ / opencode / Copilot / Gemini) | Claude / Trae — via a bridge to `.claude/skills/` and `.trae/skills/` (see `skills.md` §3.5.2 for cross-device considerations) |
 | L2 submodule `AGENTS.md` | Codex / Cursor / opencode (nearest-layer auto-load) | Claude / Trae — via the root AGENTS.md's **Module Reference Map** |
 | L2 submodule `.agents/rules/*` | **None** | All tools — via the L2 AGENTS.md's **Rules Reference** table |
@@ -143,9 +143,11 @@ your-repo/
 
 ## 0a. Rules Reference
 
-The following project-level rules live under `.agents/rules/` and are NOT
-auto-loaded by any tool — **Read on demand** when working in the matching
-domain.
+The following project-level rules live under `.agents/rules/`. On Claude /
+Cursor / Trae they auto-load through the bridges in `.claude/rules/`,
+`.cursor/rules/*.mdc`, and `.trae/rules/` (see [`rules.md`](rules.md)
+§2.3.1). Codex and opencode reach them through this table — **Read on
+demand** when working in the matching domain.
 
 | Domain / Trigger                             | Reference File                       |
 |----------------------------------------------|--------------------------------------|
@@ -181,9 +183,13 @@ overlapping topics.
 - **Claude Code / Trae**: nested AGENTS.md is NOT auto-loaded. You MUST
   use your file-read tool to Read the submodule AGENTS.md before editing
   files in that subtree.
-- **All tools**: `.agents/rules/*.md` files (at any tier) are NEVER
-  auto-loaded. Read on demand based on the matching tier's Rules Reference
-  table.
+- **L1 root `.agents/rules/*.md`**: auto-loaded on Claude / Cursor / Trae
+  through the bridges configured per [`rules.md`](rules.md) §2.3.1
+  (`.claude/rules/` and `.trae/rules/` symlinks; `.cursor/rules/*.mdc`
+  shims). Codex / opencode have no native rules system — they reach the
+  same files by following the Rules Reference table above. **L2 submodule
+  `.agents/rules/*.md`**: never auto-loaded by any tool; Read on demand
+  based on the submodule's Rules Reference table.
 - **All tools except Codex/Cursor 2.4+/opencode/Copilot/Gemini**: root
   `.agents/skills/` is not auto-discovered — Claude reads them via
   `.claude/skills/` symlinks, Trae via `.trae/skills/` mirror.
@@ -293,8 +299,8 @@ This applies identically in both tiers (root and submodule). The two directories
 | Dimension | `.agents/rules/*.md` | `.agents/skills/<name>/SKILL.md` |
 |---|---|---|
 | **Nature** | Spec library (declarative knowledge) | Workflow (operational steps the agent should run) |
-| **Trigger** | AGENTS.md route → agent actively Reads | Auto-load via `description` (root only, 5 native readers) or Workflows route (submodule) |
-| **Cross-tool native discovery** | ❌ no native support — always route-driven | ✅ at root: **5 native readers** (Codex / Cursor 2.4+ / opencode / Copilot / Gemini). At submodule level, native discovery is inconsistent, so portable setups stay route-driven |
+| **Trigger** | L1: native auto-load through bridges on Claude / Cursor / Trae (see [`rules.md`](rules.md) §2.3.1); Codex / opencode go through the AGENTS.md `Rules Reference` table. L2: AGENTS.md route → agent actively Reads (no bridge by design) | Auto-load via `description` (root only, 5 native readers) or Workflows route (submodule) |
+| **Cross-tool native discovery** | L1: ✅ all 5 tools — bridges cover Claude / Cursor / Trae, AGENTS.md routing covers Codex / opencode. L2: ❌ no native support — always route-driven | ✅ at root: **5 native readers** (Codex / Cursor 2.4+ / opencode / Copilot / Gemini). At submodule level, native discovery is inconsistent, so portable setups stay route-driven |
 | **Typical content** | "React conventions", "REST API design" | "Release to prod", "Security audit", "Regenerate Prisma client" |
 | **Load granularity** | File-level (Read on demand) | Whole skill folder (per frontmatter metadata) |
 | **When to choose** | Knowledge the agent should consult | Steps the agent should execute |
@@ -349,7 +355,7 @@ Cross-repo sharing is an org distribution concern, not a tier concern: if you wa
 3. **Avoid duplication between rules and skills**: keep one copy per piece of content; choose using §1.3.5
 
 **L1 (project root)**:
-4. **Maintain both routing tables in root AGENTS.md** — the Rules Reference (root `.agents/rules/`) and the Module Reference Map (each submodule AGENTS.md) are the only clue Claude / Trae have to find anything beyond the always-loaded slot
+4. **Maintain both routing tables in root AGENTS.md** — the Rules Reference (root `.agents/rules/`) is the only discovery path for Codex / opencode (no native rules system) and the canonical human-facing index; the Module Reference Map (each submodule AGENTS.md) is the only clue Claude / Trae have to find submodule-level content beyond the always-loaded slot. Both stay required even when L1 rules are bridged into Claude / Cursor / Trae
 5. **L1 rule file naming**: choose a name that matches what the rule covers (`react-conventions.md`, `typescript-strict.md`, `rest-api-design.md`); put a `Scope:` section at the top of each file
 6. **L1 skill `description` is the only signal** native readers use to auto-discover the skill — include both WHAT and WHEN
 7. **L1 skills must not assume a submodule context** — if ambiguous, move to the submodule or parameterize via prompt

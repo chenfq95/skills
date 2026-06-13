@@ -105,7 +105,7 @@
 | 资源 | 原生自动加载 | 路由式主动 Read |
 |---|---|---|
 | L1 根 `AGENTS.md` | Codex / Cursor / opencode（Trae 打开开关后） | Claude 通过 `CLAUDE.md` 中的 `@AGENTS.md` |
-| L1 根 `.agents/rules/*` | **无** —— 没有工具会扫 `.agents/rules/` | 全部工具——通过根 AGENTS.md 的 **Rules Reference** 表 |
+| L1 根 `.agents/rules/*` | Claude / Trae：通过把正本桥接到 `.claude/rules/` 与 `.trae/rules/`（目录 symlink）自动加载；Cursor：通过每条规则一份 `.cursor/rules/*.mdc` shim 自动加载。见 §2.3.1 | Codex / opencode——通过根 AGENTS.md 的 **Rules Reference** 表（这两家无原生 rules 系统可桥接） |
 | L1 根 `.agents/skills/*` | **5 家原生** 通过 SKILL.md `description`（Codex / Cursor 2.4+ / opencode / Copilot / Gemini） | Claude / Trae——通过桥接到 `.claude/skills/` / `.trae/skills/`（详见 §3.5.2 的跨设备兼容性提示） |
 | L2 子模块 `AGENTS.md` | Codex / Cursor / opencode（近端层自动加载） | Claude / Trae——通过根 AGENTS.md 的 **Module Reference Map** |
 | L2 子模块 `.agents/rules/*` | **无** | 全部工具——通过该子模块 AGENTS.md 的 **Rules Reference** 表 |
@@ -337,8 +337,8 @@ Scope: `packages/frontend/**/*.{ts,tsx}`
 | 维度 | `.agents/rules/*.md` | `.agents/skills/<name>/SKILL.md` |
 |---|---|---|
 | **本质** | 规范库（声明性知识，agent 应"查阅"） | 工作流（操作步骤，agent 应"执行"） |
-| **触发** | AGENTS.md 路由 → agent 主动 Read | 项目根：通过 `description` 自动发现（5 家原生）；子模块：通过 Workflows 表路由 |
-| **跨工具原生发现** | ❌ 无原生支持，始终路由式 | ✅ 项目根：**5 家原生**（Codex / Cursor 2.4+ / opencode / Copilot / Gemini）；❌ 子模块：不会被扫描，始终路由式 |
+| **触发** | L1：Claude / Cursor / Trae 通过桥接原生自动加载（见 §2.3.1）；Codex / opencode 经 AGENTS.md `Rules Reference` 表路由。L2：所有工具都经子模块 AGENTS.md 路由 → agent 主动 Read（不做桥接） | 项目根：通过 `description` 自动发现（5 家原生）；子模块：通过 Workflows 表路由 |
+| **跨工具原生发现** | L1：✅ 5 家通用——桥接覆盖 Claude / Cursor / Trae，AGENTS.md 路由覆盖 Codex / opencode。L2：❌ 无原生支持，始终路由式 | ✅ 项目根：**5 家原生**（Codex / Cursor 2.4+ / opencode / Copilot / Gemini）；❌ 子模块：不会被扫描，始终路由式 |
 | **典型内容** | "React 规范"、"REST API 设计准则" | "发布到 prod"、"安全审计"、"重生成 Prisma client" |
 | **加载粒度** | 文件级（按需 Read） | 整个 skill folder（按 frontmatter 元信息） |
 | **选用判据** | agent 应"查阅"的知识 | agent 应"执行"的步骤 |
@@ -482,18 +482,65 @@ Q1: 是项目级强约束、每次会话都必须遵守吗？
 
 ### 2.3 项目配置最佳实践
 
-> **🎯 核心策略：放弃各家 rules 系统，把内容按"加载频率 + 通用程度"分流**
+> **🎯 核心策略：规则正本只放在 `.agents/rules/`，再分别桥接到各家原生 rules 路径**
 >
-> 由于 Rules 五家路径、frontmatter 字段、激活机制全部不兼容（详见 §2.1），且核心机制基本定型、未来不会统一，**生产项目最优解是绕过 rules 系统**，按以下四类分流：
+> Rules 五家路径、frontmatter 字段、激活机制全部不兼容（详见 §2.1），且核心机制基本定型、未来不会统一。但**放弃各家原生 rules 系统**会失去 Cursor 的智能激活、Trae 的 `#Rule` 触发等独有能力；**每家复制一份**又会随时间漂移。最优解是把每条规则的正本保留在 `.agents/rules/<topic>.md`，再让支持 rules 的三家工具按自己的格式桥接到同一个文件——内容按以下四类分流，桥接方式见 §2.3.1：
 >
-> | 内容类型 | 应迁移到 | 跨工具兼容性 |
+> | 内容类型 | 正本位置 | 各工具如何到达 |
 > |---|---|---|
-> | **项目级强约束**（禁区、命名规范、提交格式） | **根 `AGENTS.md`** 正文 | ✅ 5 家通用 |
-> | **项目级规则**（多个子模块都会查阅，如 coding-style、security-baseline） | **根 `.agents/rules/*.md`**（从根 AGENTS.md Rules Reference 引用） | ⚠️ 无原生自动加载，靠 AGENTS.md 路由 |
-> | **子模块独占规则**（如前端 React 规范） | **`packages/<name>/.agents/rules/*.md`**（从 `packages/<name>/AGENTS.md` 引用） | ✅ Codex/Cursor/opencode 自动加载子模块 AGENTS.md + Claude/Trae 经根 Module Reference Map |
-> | **可触发的工作流 / SOP**（发布、审计、scaffold） | 对应层的 **`.agents/skills/<name>/SKILL.md`** | ✅ 项目根 skills 由 5 家自动发现；子模块 skills 经 Workflows 表路由 |
+> | **项目级强约束**（禁区、命名规范、提交格式） | **根 `AGENTS.md`** 正文 | 5 家通用——Codex / Cursor / opencode 始终加载；Claude 通过 `CLAUDE.md` 中 `@AGENTS.md` 引用；Trae 启用 "Include AGENTS.md" 开关后加载 |
+> | **项目级规则**（coding-style、TS strict、security-baseline 等） | **根 `.agents/rules/<topic>.md`** | Claude / Trae：目录符号链桥接自动加载（§2.3.1）；Cursor：每条规则一份 `.mdc` shim 自动加载；Codex / opencode：经根 AGENTS.md `Rules Reference` 表 |
+> | **子模块独占规则**（如前端 React 规范） | **`packages/<name>/.agents/rules/<topic>.md`** | 5 家统一经子模块 AGENTS.md `Rules Reference` 表路由（L1 目录桥不覆盖 L2，详见 §2.3.1 设计取舍） |
+> | **可触发的工作流 / SOP**（发布、审计、scaffold） | 对应层的 **`.agents/skills/<name>/SKILL.md`** | 见 §3.5——属于另一个维度 |
 >
-> 子模块规则文件放在 `packages/<name>/.agents/rules/`，镜像根 `.agents/rules/` 布局。子模块 AGENTS.md 保持 slim——只放该模块的 stack 信息 + 一张 Rules Reference 表，指向本地的 `.agents/rules/*.md`。
+> 子模块规则文件镜像根 `.agents/rules/` 布局。子模块 AGENTS.md 保持 slim——只放该模块的 stack 信息 + 一张 Rules Reference 表，指向本地的 `.agents/rules/*.md`。
+
+#### 2.3.1 把 Claude / Trae / Cursor 桥接到 `.agents/rules/`
+
+规则正本统一放在 `.agents/rules/<topic>.md`，三家支持 rules 的工具按各自原生路径桥接到它：
+
+| 工具 | 桥接方式 | 备注 |
+|---|---|---|
+| **Claude Code** | **目录符号链** `.claude/rules → .agents/rules`（或只暴露子集时使用单文件 symlink） | Claude 原生读 `.md`。路径限定用 Claude 的 `paths` frontmatter——直接写在**正本文件**里（Trae 会忽略未知字段；Codex / opencode 永远不直接读这些文件）。 |
+| **Trae** | **目录符号链** `.trae/rules → .agents/rules`（与 Claude 同形） | Trae 原生读 `.md`。激活模式在 Trae IDE 设置面板按 rule 配置，不是 frontmatter——团队约定一套约定即可。 |
+| **Cursor** | **每条规则一份 `.mdc` shim** 放在 `.cursor/rules/<topic>.mdc`，内含 Cursor 专属 frontmatter（`description` / `globs` / `alwaysApply`），body 要么写一行指向正本的链接、要么 inline 正本内容 | Cursor 只读 `.mdc`，纯 `.md` symlink 会被忽略。shim 本身很轻量（frontmatter + 几行 body），但能保留 Cursor 的智能激活——`description` 和 `globs` 要写得有意义。 |
+| **Codex** | 无 rules 系统——经根 AGENTS.md `Rules Reference` 表到达 | 不变 |
+| **opencode** | 同 Codex——经根 AGENTS.md 到达；或在 `opencode.json` 的 `instructions` 数组里直接指向 `.agents/rules/*.md` | 不变 |
+
+**Cursor shim 有两种风格**——选一种全局统一：
+
+*Redirect shim*（更轻，但 body 要 agent 主动 Read 正本）：
+
+```mdc
+---
+description: TypeScript strict-mode conventions for this repo
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: false
+---
+
+Apply the conventions documented in [`.agents/rules/typescript-strict.md`](../../.agents/rules/typescript-strict.md). Read that file before continuing.
+```
+
+*Inline shim*（重一些，但 Cursor 激活时立即看到内容；正本变更后需要重生成——一个把 `.agents/rules/*.md` 拷贝到 `.cursor/rules/*.mdc` 并加上 frontmatter 的小脚本是标准做法）：
+
+```mdc
+---
+description: TypeScript strict-mode conventions for this repo
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: false
+---
+
+<!-- AUTO-GENERATED from .agents/rules/typescript-strict.md — edit the canonical file, not this shim -->
+
+# TypeScript Strict Mode
+...(body 从正本拷贝)...
+```
+
+> ⚠️ **跨设备兼容性同样适用**——skills 桥接在 §3.5.2 描述的所有约束在这里完全一致（Windows symlink 权限 / `git config core.symlinks` / FAT32 / 网络盘 / 与 `~/.claude/rules/`、`~/.trae/rules/` 等 `npx skills add` 等消费侧安装路径共存）。选择适合团队 OS 组合的桥接策略，本 handbook 故意不给出"标准脚本"。**绝不要为了"刷新桥接"而直接删除已存在的 `.claude/rules/` / `.trae/rules/` 目录**——里面可能已经有消费侧安装器或别的来源写入的内容。
+
+**子模块规则只走路由，不桥接。** L1 目录 symlink 只暴露根 `.agents/rules/` 文件。`packages/<name>/.agents/rules/` 下的子模块规则继续走子模块 AGENTS.md 的 `Rules Reference` 表路由——这样既能让规则只在工作于该子树时被看到（这正是期望的 scoping），又避免把每个子模块的内部细节灌进 Claude / Trae 平铺的 rules 目录。
+
+**根 AGENTS.md `Rules Reference` 表依然必须保留**——它是 Codex / opencode（无 native rules 系统）的唯一发现路径，也是给人看的索引。桥接到位之后，Claude / Cursor / Trae 自动加载这些文件；`Rules Reference` 表退化为跨工具的意图说明。
 
 #### 决策树：一条规则该写在哪？
 
@@ -519,9 +566,9 @@ Q1: 是项目级强约束、每次会话都必须遵守吗？
                                AGENTS.md 的 Module Reference Map 加一行）
 ```
 
-#### 迁移路线：从各家 rules 到 AGENTS.md + .agents/rules + Skills
+#### 迁移路线：从各家 rules 到 `.agents/rules/` + 桥接 + Skills
 
-**Step 1**：把 always-loaded 规则迁到根 AGENTS.md
+**Step 1**：把 always-loaded 规则迁到根 AGENTS.md（不需要桥接——每家都能读 AGENTS.md）
 
 ```diff
 - .cursor/rules/coding-style.mdc (alwaysApply: true)
@@ -572,14 +619,18 @@ Read on demand when working in the matching domain:
 | Touching state management             | `packages/frontend/.agents/rules/state-management.md`  |
 ```
 
-**Step 3**：把"项目级规则"（多个子模块都会查阅的规则）迁到根 `.agents/rules/`，由根 AGENTS.md 引用
+**Step 3**：把"项目级规则"（多个子模块都会查阅的规则）迁到根 `.agents/rules/`，并把三家 rules-支持工具桥接到它
 
 ```diff
 - .cursor/rules/coding-style.mdc (无路径限定，但是知识性内容)
 - .claude/rules/typescript-strict.md (项目范围 TS 严格模式约束)
-+ .agents/rules/coding-style.md
-+ .agents/rules/typescript-strict.md
-+ AGENTS.md  ## 0a. Rules Reference 加引用
++ .agents/rules/coding-style.md                                  # 正本
++ .agents/rules/typescript-strict.md                              # 正本
++ .claude/rules → .agents/rules                                   # 桥接（目录 symlink，或单文件 symlink）
++ .trae/rules   → .agents/rules                                   # 桥接（目录 symlink）
++ .cursor/rules/coding-style.mdc                                  # 桥接（每条规则一份 .mdc shim）
++ .cursor/rules/typescript-strict.mdc                             # 桥接（每条规则一份 .mdc shim）
++ AGENTS.md  ## 0a. Rules Reference                               # 给 Codex / opencode 用
 ```
 
 **Step 4**：把"按需触发的长 SOP / 智能激活内容"迁到 Skills
@@ -595,82 +646,76 @@ Read on demand when working in the matching domain:
 >
 > 💡 **为什么用子模块 `.agents/rules/` 而不是把规则塞进子模块 AGENTS.md**：保证每个规则文件聚焦单一主题、镜像根 `.agents/rules/` 布局（认知负担更低），且避免子模块 AGENTS.md 超过 Codex 32 KiB 静默截断阈值。
 
-#### 各家 rules 系统的保留用途（什么时候确实需要 rules）
+#### 桥接覆盖不到的工具特有场景
 
-虽然推荐迁移，但以下场景**仍需保留各家 rules**——这些是 AGENTS.md/Skills 替代不了的：
+桥接覆盖了"在合适的上下文里 agent 该读规则"这个常见诉求。下列场景需要在正本之上额外做一点工具侧配置：
 
-| 场景 | 必须用 rules 的工具 | 理由 |
+| 场景 | 处理方式 | 理由 |
 |---|---|---|
-| Cursor 的 `@rule-name` 手动引用 | Cursor `.cursor/rules/` (无 frontmatter) | Cursor 特有交互方式 |
-| Trae 的 `#Rule` 手动触发（最高优先级） | Trae `.trae/rules/` | Trae 特有，且优先级高于一切 |
-| 工具专属的 IDE 行为（如 Cursor Team Rules 仪表盘） | Cursor Team Rules | 企业管理需求 |
-| Claude path-scoped 但**不希望**通过 AGENTS.md 路由 | Claude `.claude/rules/*.md` + `paths` | 极少数情况 |
+| Cursor `@rule-name` 手动引用 | `@rule-name` 按 `.mdc` shim 的文件名解析——保持 shim 文件名（不含扩展名）与正本文件名一致即可 | Cursor 的 `@` 语法直接匹配 shim 名；只要 1-to-1 镜像就不用额外配置 |
+| Trae `#Rule rule-name` 手动触发（最高优先级，强制加载） | 同理——`#Rule` 按 `.trae/rules/` 下的文件名解析，而该文件就是正本的 symlink | 通过 symlink 直通，无需改动 |
+| 工具专属的 IDE 行为（如 Cursor Team Rules 仪表盘） | 继续通过工具自身的企业仪表盘管理；视作 `.agents/rules/` 之外的带外通道 | 企业治理在工具层而非文件层 |
+| Claude path-scoped 规则 | 把 `paths: [...]` frontmatter 写在 `.agents/rules/` 下的**正本**文件里——symlink 把同一个文件暴露给 Claude，Claude 会读取 `paths`；Trae / Codex / opencode 会忽略这个未知字段 | 单文件、单 frontmatter、不重复 |
 
-> 💡 **80/20 原则**：80% 的规则迁到 AGENTS.md + Skills，20% 工具专属的留在各家 rules 系统。
+#### 推荐布局
 
-#### 迁移后的对比示例
-
-**之前（rules 分散在三处，互不兼容）**：
 ```
-.cursor/rules/
-  ├── coding-style.mdc (alwaysApply)
-  ├── react.mdc (globs)
-  └── deploy.mdc (manual)
-.claude/rules/
-  ├── coding-style.md
-  ├── react.md (paths)
-  └── deploy.md
-.trae/rules/
-  └── project_rules.md
-```
-
-**之后（AGENTS.md 路由 + `.agents/rules/` + Skills 统一）**：
-```
-AGENTS.md                                              # 强约束 + 路由表（始终加载）
-.agents/rules/                                         # （可选）项目级规则
+AGENTS.md                                              # 强约束 + Rules Reference 表（给 Codex/opencode 发现）
+.agents/rules/                                         # 正本（唯一来源）
+  ├── coding-style.md                                  #   always-on 风格规则
+  └── typescript-strict.md                             #   含 Claude `paths` frontmatter，其他工具忽略
+.claude/rules → .agents/rules                          # 桥接：目录 symlink
+.trae/rules   → .agents/rules                          # 桥接：目录 symlink
+.cursor/rules/                                         # 桥接：每条规则一份 .mdc shim（frontmatter + redirect 或 inline）
+  ├── coding-style.mdc                                 #   description / alwaysApply
+  └── typescript-strict.mdc                            #   description / globs
 packages/frontend/AGENTS.md                            # slim：scope + Rules Reference + Workflows
-packages/frontend/.agents/rules/react-conventions.md   # 子模块独占规则
+packages/frontend/.agents/rules/react-conventions.md   # 子模块独占规则——只走路由，不桥接
 .agents/skills/deploy/SKILL.md                         # 部署 SOP（按需加载，替代 manual rules）
 ```
 
-- 文件数：从 7 个 → 4 个（如有项目级 `.agents/rules/` 则为 5 个）
-- 跨工具兼容：从 0% → 100%
-- 发现链：根 AGENTS.md `Module Reference Map` → 子模块 AGENTS.md → 子模块 `.agents/rules/*.md`（Codex/Cursor 自动加载前两步；Claude/Trae 每步都主动 Read）
-- Context 消耗：仅根 AGENTS.md 始终加载，子模块/Skills 按需加载
+该布局的性质：
+
+- 每条规则只有一份正本放在 `.agents/rules/` 下；桥接（symlink + 精简 `.mdc` shim）不携带规则内容
+- 跨工具兼容：每家工具都到同一份正本
+- 智能激活保留：Cursor `.mdc` shim 保留 `description` / `globs` 智能激活；Trae IDE 侧的激活模式继续生效；Claude `paths` 通过正本文件 frontmatter 生效
+- Context 消耗：仅根 AGENTS.md 始终加载；子模块 AGENTS.md / 子模块 `.agents/rules/` / Skills 按需加载；L1 `.agents/rules/*.md` 在对应工具的桥接触发时加载
 
 ### 2.4 各工具特殊注意事项
 
 #### Claude Code
 
-- 💡 字段叫 `paths`（不是 globs），单行无引号格式可避免某些 parser bug：`paths: src/api/**/*.ts, lib/**/*.ts`
+- 💡 配置好桥接（`.claude/rules → .agents/rules`）之后，Claude 原生看到每个正本文件——除了这条 symlink 之外没有别的设置
+- 💡 字段叫 `paths`（不是 globs），单行无引号格式可避免某些 parser bug：`paths: src/api/**/*.ts, lib/**/*.ts`。把 `paths` 写在 `.agents/rules/` 下的**正本**文件里，其他工具会忽略未知 frontmatter
 - ⚠️ path-scoped 只在 Claude **Read** 匹配文件时触发，**编辑新建文件可能不触发**
 - 💡 `/memory` 命令审计当前实际加载的规则
-- ❌ 不支持 description 智能激活、不支持 @rule 手动调用（用 Skills 替代）
+- ❌ 原生不支持 description 智能激活、不支持 `@rule` 手动调用（Cursor 的 `@rule-name` 仅在 Cursor 中、通过 `.mdc` shim 工作）
 
 #### Cursor
 
-- ⚠️ `.cursor/rules/` 下的 `.md`（无 frontmatter）**会被忽略**，必须 `.mdc`
-- 💡 2.2+ 起新规则以**文件夹形式**保存（`.cursor/rules/<name>/RULE.md`），旧 `.mdc` 仍工作
-- 💡 Team Rules 通过 Team/Enterprise 仪表盘统一管理
+- ⚠️ **只读 `.mdc`**——`.cursor/rules/` 下的 `.md` 文件（以及任何指向 `.md` 的 symlink）会被忽略。这就是桥接到 Cursor 必须用**每文件一份 `.mdc` shim**、而不能用目录 symlink 的原因（见 §2.3.1）
+- 💡 shim 风格（redirect vs inline）权衡 body 大小与 active-Read 延迟；短规则通常 inline 更划算，长规则 redirect 更划算
+- 💡 2.2+ 起新规则也接受**文件夹形式**保存（`.cursor/rules/<name>/RULE.md`），shim 两种形式都兼容
+- 💡 Team Rules 通过 Team / Enterprise 仪表盘统一管理——这些不进入 `.agents/rules/`
 - ⚠️ `CLAUDE.md` 在 Cursor 中**始终全量加载**（无视 alwaysApply），用于跨工具兼容
 
 #### Trae
 
-- 💡 激活模式在 IDE Settings 面板配置（不是 frontmatter），团队需统一约定
-- 💡 `#Rule rule-name` 是最高优先级，即使规则设为其他模式也强制加载
+- 💡 配置好桥接（`.trae/rules → .agents/rules`）之后，Trae 原生看到每个正本文件
+- 💡 激活模式在 IDE Settings 面板按 rule 配置（不是 frontmatter）——团队需统一约定并在正本文件旁记录
+- 💡 `#Rule rule-name` 按 `.trae/rules/` 下的文件名解析，通过 symlink 直通无需改动；且是最高优先级（即使该规则设为其他激活模式也强制加载）
 - 💡 `.trae/settings.local.json` 默认 gitignore，可做个人本地覆盖
 
 #### Codex
 
-- ❌ 无独立 rules 系统，所有"规则"通过 AGENTS.md 表达 + 目录嵌套实现
+- ❌ 无独立 rules 系统，所有"规则"通过 AGENTS.md 表达 + 目录嵌套实现。根 AGENTS.md `Rules Reference` 表是 Codex 到达 `.agents/rules/*.md` 的唯一入口
 
 #### opencode
 
 - ❌ **无独立 Rules 系统**——一切走 `AGENTS.md`（理念与 Codex 相同）
-- 💡 **不复制到 AGENTS.md 也能挂额外规则文件**：在 `opencode.json` 设置 `instructions: ["./docs/coding-style.md", "./docs/security.md"]`，内容会被附加到每次会话的 context
+- 💡 **不复制到 AGENTS.md 也能挂额外规则文件**：在 `opencode.json` 设置 `instructions: ["./.agents/rules/coding-style.md", "./.agents/rules/typescript-strict.md"]`，正本会被附加到每次会话的 context——这是 opencode 对全局规则的桥接等价物
 - 💡 **全局规则**：`~/.config/opencode/AGENTS.md` 在每个 opencode 会话中加载——等价于"用户级常驻规则"
 - 💡 **per-agent scope**：subagent 的 `permission` 块（在 agent markdown 里）可以 deny 让它违反规则的工具（例如 reviewer 设 `edit: deny`）
-- 💡 推荐迁移：任何 Cursor `.mdc` 或 Claude `.md` 中 `alwaysApply: true` 的规则 → 直接写入根 `AGENTS.md`；带 scope 的规则 → `instructions` 数组或子模块 AGENTS.md 路由（与组织标准一致）
 
 ---
 
@@ -2358,7 +2403,11 @@ conflicting root rules on overlapping topics.
 - Codex / Cursor / opencode: nested AGENTS.md auto-loads — no manual read needed.
 - Claude / Trae: MUST Read the submodule AGENTS.md before editing files
   in that subtree.
-- All tools: .agents/rules/*.md (at any tier) are NEVER auto-loaded — Read on demand.
+- L1 root .agents/rules/*.md: auto-loaded on Claude / Cursor / Trae via the
+  bridges (`.claude/rules/` and `.trae/rules/` symlinks; `.cursor/rules/*.mdc`
+  shims) — see §2.3.1. Codex / opencode reach them via the Rules Reference
+  table above. L2 submodule .agents/rules/*.md: NEVER auto-loaded by any
+  tool — Read on demand based on each submodule's Rules Reference table.
 - All tools: submodule skills under packages/*/.agents/skills/ are NEVER auto-discovered — routed via each submodule AGENTS.md's Workflows table.
 
 ## 1. Stack
