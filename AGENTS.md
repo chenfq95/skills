@@ -1,214 +1,116 @@
 # AGENTS.md
 
-This repository stores agent skills and the scripts/docs that support them.
-The primary active code lives in `.agents/skills/synconf/`, with helper tooling in `.agents/skills/skills-sync/`.
+This repository stores agent skills and their supporting long-form documentation. Top-level layout:
 
-## Scope
+| Path | Purpose | Agent surface? |
+|---|---|---|
+| `.agents/skills/<name>/` | Skills — actionable, agent-facing (auto-discovered by 5 tools via SKILL.md `description`) | ✅ |
+| `docs/<topic>/` | Long-form research / reports backing a skill (too verbose for SKILL.md's 500-line cap) | ❌ human-readable only |
+| `README.md` | Install / update / uninstall instructions for end users | ❌ |
+| `AGENTS.md` (this file) | Top-level agent guidance | ✅ (where supported) |
 
-- Primary skill: `.agents/skills/synconf/`
-- Secondary skill: `.agents/skills/skills-sync/`
-- Main code: `.agents/skills/*/scripts/*.py`
-- Supporting files: `SKILL.md`, `templates/README.md`, `evals/evals.json`, `config.json`
-- There is no root `pyproject.toml`, `pytest.ini`, `tox.ini`, `package.json`, or `Makefile`
+Three skills live here:
 
-## Rule Files
+| Skill | Path | Shape | Backing doc |
+|---|---|---|---|
+| `synconf` | `.agents/skills/synconf/` | Python scripts + templates + evals | — |
+| `skills-sync` | `.agents/skills/skills-sync/` | Python scripts | — |
+| `org-agents-handbook` | `.agents/skills/org-agents-handbook/` | docs-only (`SKILL.md` + `reference/*.md`) | [`docs/org-agents-handbook/full-report.md`](docs/org-agents-handbook/full-report.md) |
 
-- No Cursor rules were found in `.cursor/rules/`
-- No `.cursorrules` file was found
-- No Copilot instructions were found in `.github/copilot-instructions.md`
-- Treat this file as the top-level agent guidance for the repo
+Each skill's `SKILL.md` is the source of truth — read it before changing the skill's behavior. There is no root `pyproject.toml`, `pytest.ini`, `package.json`, or `Makefile`, and no `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.md`. Treat this file as the top-level guidance.
 
-## Repo Priorities
+## Mandatory rules for new skills
 
-- Keep changes small and targeted
-- Preserve synconf's copy-based workflow; do not convert it to symlink-based behavior
-- Reuse existing repo structure instead of introducing new frameworks
-- Keep scripts, docs, templates, and evals aligned when behavior changes
-- Treat wording changes in `SKILL.md` as product changes
+`org-agents-handbook` is the cross-tool reference for configuring AI coding agents — **its rules apply to this repo's own skills too**. When adding any skill (existing or new), follow `org-agents-handbook/SKILL.md` §M1:
 
-## Environment
+- Path: `.agents/skills/<name>/SKILL.md` (never under `.cursor/`, `.claude/`, `.codex/`, `.opencode/`, or `.trae/`)
+- `name`: matches `^[a-z0-9]+(-[a-z0-9]+)*$`, 1–64 chars, equal to the parent directory name
+- `description`: 1–1024 chars, third person, states both WHAT it does and WHEN it activates
+- Frontmatter stays portable; tool-specific fields only when required, and document the deviation in the body
+- Body ≤ 500 lines; overflow goes into sibling files (e.g. `reference/*.md`)
 
-- Workspace Python is `3.12`, but code intentionally targets Python `3.8+`
-- Prefer standard-library-only solutions unless a dependency is clearly justified
-- Use `python` in this workspace; `py -3` is not available here
+## Repo priorities
 
-## Build, Lint, and Test
+- Keep changes small and targeted; reuse existing structure over new frameworks
+- Treat `SKILL.md` wording changes as product changes
+- Keep scripts, docs (`SKILL.md`, `templates/README.md`), and `evals/evals.json` aligned when behavior changes
+- For `org-agents-handbook` edits, re-check the routing tables and reference index in its `SKILL.md`; if a §M1 rule changes, mirror it in this file
 
-There is no formal build pipeline and no configured linter in the repository root.
-Validation is mainly Python syntax checks, CLI help smoke tests, and the custom synconf test runner.
+## `docs/` folder
 
-### Repo-wide checks
+Long-form documentation that **supplements** skills but does NOT belong in any `SKILL.md` body (which is capped at 500 lines per `org-agents-handbook/SKILL.md` §M1). Currently:
 
-- Compile all tracked Python:
-  - `python -m compileall .agents/skills`
-- Syntax-check one file:
-  - `python -m py_compile .agents/skills/synconf/scripts/manage.py`
+| File | Backs which skill | Purpose |
+|---|---|---|
+| `docs/org-agents-handbook/full-report.md` | `.agents/skills/org-agents-handbook/` | Full ~2700-line cross-tool research report (capability matrices, decision trees, per-tool deep dives, verification recipes). The skill's `SKILL.md` is the actionable surface; this report is the evidence base. |
 
-### Synconf commands
+Rules for `docs/`:
 
-- Full test suite:
-  - `python .agents/skills/synconf/scripts/tests.py`
-- CLI help smoke checks:
-  - `python .agents/skills/synconf/scripts/manage.py --help`
-  - `python .agents/skills/synconf/scripts/backup.py --help`
-  - `python .agents/skills/synconf/scripts/restore.py --help`
-  - `python .agents/skills/synconf/scripts/sync.py --help`
-  - `python .agents/skills/synconf/scripts/init_repo.py --help`
+- **Human-facing only** — no tool reads it natively; no SKILL.md frontmatter, no scripts, no auto-activation
+- **One subdirectory per topic**, mirroring the matching `.agents/skills/<name>/` when applicable (e.g. `docs/org-agents-handbook/` ↔ `.agents/skills/org-agents-handbook/`)
+- **Bidirectional consistency** — when a SKILL.md / `reference/*.md` rule changes the underlying fact, update the matching `docs/` file too (and vice versa); a single commit should cover both
+- Do **not** move agent-facing content here to dodge size limits — split into `reference/*.md` instead; `docs/` is for long-form prose, research notes, and report-style write-ups
+- Do **not** add `docs/` paths to skill routing tables — agents reach `docs/` only when a human or AGENTS.md explicitly links to them
 
-### Skills-sync commands
+## Test & validate
 
-- CLI help:
-  - `python .agents/skills/skills-sync/scripts/skills_sync.py --help`
-- Scan installed skills:
-  - `python .agents/skills/skills-sync/scripts/skills_sync.py --scan`
-- Export selected skills:
-  - `python .agents/skills/skills-sync/scripts/skills_sync.py --scan --output-yaml ./skills.yaml`
-- Restore from YAML:
-  - `python .agents/skills/skills-sync/scripts/skills_sync.py --from-yaml ./skills.yaml`
+| Change | Run |
+|---|---|
+| Any Python edit | `python -m compileall .agents/skills` |
+| `synconf/scripts/*.py` or `config.json` behavior | `python .agents/skills/synconf/scripts/tests.py` |
+| Any CLI surface change | the relevant `--help` (e.g. `python .agents/skills/synconf/scripts/manage.py --help`) |
+| `org-agents-handbook` docs | re-check routing-table links resolve; `SKILL.md` body ≤ 500 lines |
+| `docs/<topic>/*.md` edits | review for consistency with the backing skill's `SKILL.md` + `reference/*.md`; no compile/test needed |
+| Docs-only edits elsewhere | review for consistency; no compile/test needed |
 
-### Single-test workflow
+Single test: `python -c "import sys; sys.path.insert(0, '.agents/skills/synconf/scripts'); import tests; tests.test_backup_conflict_detection()"`. Available tests are defined at module level in `synconf/scripts/tests.py` — run any of them by name.
 
-There is no `pytest` suite yet.
-Run one synconf test by importing `tests.py` and calling a function directly.
+CLIs available for `--help` checks: `synconf/scripts/{manage,backup,restore,sync,init_repo}.py`, `skills-sync/scripts/skills_sync.py`.
 
-- Example:
-  - `python -c "import sys; sys.path.insert(0, r'.agents/skills/synconf/scripts'); import tests; tests.test_backup_conflict_detection()"`
-- Another example:
-  - `python -c "import sys; sys.path.insert(0, r'.agents/skills/synconf/scripts'); import tests; tests.test_selection_order()"`
+## Synconf runtime behavior — preserve
 
-Available focused tests:
-
-- `test_backup_conflict_detection()`
-- `test_restore_conflict_detection()`
-- `test_platform_filtering()`
-- `test_repo_scaffold_refresh()`
-- `test_selection_order()`
-- `test_manage_removal_cleanup()`
-- `test_manage_removal_cleans_software_directory()`
-- `test_repo_relative_path_layout()`
-- `test_zed_cross_platform_paths()`
-- `test_run_scan_filters_registry_platforms()`
-
-### What to run for common changes
-
-- Docs-only edits:
-  - usually just review for consistency unless behavior changed
-- `common.py`, `manage.py`, `backup.py`, `restore.py`, or `config.json` changed:
-  - `python -m compileall .agents/skills`
-  - `python .agents/skills/synconf/scripts/tests.py`
-- CLI behavior changed:
-  - run the relevant `--help` command
-  - run the synconf test suite if behavior changed
-- Template or scaffold behavior changed:
-  - `python .agents/skills/synconf/scripts/tests.py`
-
-## Runtime Behavior To Preserve
-
-- Default synconf repo path is `~/.synconf`
-- Reuse an existing `~/.synconf`; do not delete and recreate it
-- Sync is copy-based, not symlink-based
-- Selection is per software, not per category
-- Tracked inventory lives in `manifest.json`
-- Local-only scan state lives in `.state.json`
-- Repo backups use `category/software/...`
+- Default repo path is `~/.synconf`; reuse an existing one, never delete-and-recreate
+- Sync is **copy-based**, not symlink-based
+- Selection is **per software**, not per category
+- Tracked inventory in `manifest.json`; local-only scan state in `.state.json`
+- Repo backups use `category/software/...` layout
 - Home path normalization uses `__SYNCONF_HOME__` and `__SYNCONF_HOME_POSIX__`
 - Pending manual merges live in `merge-notes/pending-merges.json`
+- Conflict actions are always `overwrite | skip | manual | merge`; show diffs before overwriting
 
-## Code Style
+## Org-agents-handbook conventions
 
-Follow the existing style in `.agents/skills/synconf/scripts/*.py` and `.agents/skills/skills-sync/scripts/*.py`.
+- Layout is fixed: `SKILL.md` (≤ 500 lines) + `reference/*.md` (one file per dimension: agents-md, rules, skills, commands, subagents, hooks, settings, mcp)
+- Docs-only — do not introduce scripts, templates, or evals
+- New reference docs must be added to both the routing table and reference index in `SKILL.md`
+- Each reference doc is self-contained (readers load one at a time)
+- The tools-covered list (Claude Code / Codex / Cursor / Trae / opencode) is canonical — do not silently expand or shrink
+- The long-form research report lives at [`docs/org-agents-handbook/full-report.md`](docs/org-agents-handbook/full-report.md), **not** inside the skill — keep `SKILL.md` + `reference/*.md` actionable and concise; push prose, justification, and deep dives to the report. When the report changes a fact that affects a §M1 rule, mirror the change in `SKILL.md` (and in this file's Mandatory rules section)
 
-### Python compatibility
+## Code style (Python)
 
-- Target Python `3.8+`
-- Do not introduce Python 3.9+ syntax like `list[str]`, `dict[str, Any]`, or `Path | None`
-- Prefer `typing.List`, `typing.Dict`, `typing.Optional`, `typing.Tuple`, `typing.Sequence`, and `typing.Mapping`
+Match the existing style in `.agents/skills/synconf/scripts/*.py` and `.agents/skills/skills-sync/scripts/*.py`.
 
-### Imports
-
-- Group imports as standard library first, then local imports
-- Keep imports explicit and stable
-- Prefer `from pathlib import Path`
-- Remove unused imports when touching a file
-- Avoid import-time side effects beyond constants or path setup
-
-### Formatting
-
-- Use 4-space indentation
-- Use triple double-quoted docstrings
-- Prefer readable multi-line calls over dense one-liners
-- Use trailing commas in multi-line literals/calls when helpful
-- Prefer f-strings for diagnostics and user-facing output
-- Keep files plain ASCII unless Unicode is already established
-
-### Types and data modeling
-
-- Add type hints to new or modified functions
-- Use `TypedDict` for JSON-like payloads such as manifest/state data
-- Use `@dataclass` for small structured records
-- Use `Path` for filesystem values internally; convert at CLI or serialization boundaries
-- Keep typing practical; avoid unnecessary abstraction
-
-### Naming
-
-- Files: `lower_snake_case.py`
-- Functions and variables: `snake_case`
-- Classes: `PascalCase`
-- Constants: `UPPER_SNAKE_CASE`
-- Keep user-facing labels human-readable, such as `VS Code`, `Windows Terminal`, and `Oh My Zsh`
-
-### Module organization
-
-- Keep constants and typed payload definitions near the top
-- Put reusable helpers before CLI orchestration
-- Keep `main()` near the end of CLI modules
-- Guard entrypoints with `if __name__ == "__main__":`
-- Move shared logic into `common.py` instead of duplicating it
-
-### Error handling
-
-- Raise clear exceptions for real setup failures
-- Handle expected environment issues gracefully
-- Prefer narrow exception handling such as `ValueError`, `OSError`, `PermissionError`, `UnicodeDecodeError`, and `json.JSONDecodeError`
-- When continuing after an error, print a clear warning with the affected path or action
-- Do not swallow exceptions silently
-- Use `parser.error(...)` for invalid CLI argument combinations
-
-### Filesystem and subprocess work
-
-- Prefer `pathlib.Path` over manual string concatenation
-- Be careful with `unlink()` and `shutil.rmtree()`; only remove tracked/generated targets
+- **Target Python 3.8+** — no `list[str]`, `dict[str, Any]`, or `X | None` syntax; use `typing.List/Dict/Optional/Tuple/Sequence/Mapping`
+- **Standard library only** unless a dependency is clearly justified; workspace Python is 3.12 but code stays 3.8-compatible
+- `from pathlib import Path`; group stdlib imports before local; no import-time side effects beyond constants
+- 4-space indent, triple-double-quoted docstrings, f-strings for output, ASCII unless Unicode is already established
+- Type-hint new/modified functions; `TypedDict` for JSON payloads, `@dataclass` for small records
+- Names: `lower_snake_case.py`, `snake_case` funcs/vars, `PascalCase` classes, `UPPER_SNAKE_CASE` constants; keep user-facing labels human-readable (`VS Code`, `Windows Terminal`)
+- Narrow exceptions (`ValueError`, `OSError`, `PermissionError`, `UnicodeDecodeError`, `json.JSONDecodeError`); never swallow silently; use `parser.error(...)` for bad CLI args
+- Be careful with `unlink()` / `shutil.rmtree()` — only remove tracked/generated targets; preserve `.git`, remotes, history
 - Prefer `subprocess.run(..., check=False)` and inspect `returncode`
-- Capture stdout/stderr when reporting failures; inherit stdio for interactive flows
-- Preserve `.git`, remotes, and repo history
+- Comments only for non-obvious intent — prefer better names or helper extraction
+- Move shared logic into `common.py` instead of duplicating
 
-### CLI and UX conventions
-
-- Keep prompts explicit and operational
-- Preserve numbered, per-software confirmation flows
-- Keep conflict actions consistent: `overwrite`, `skip`, `manual`, `merge`
-- Show diffs before overwriting when local and repo versions differ
-- End flows with concrete summaries and next actions
-
-### Comments and docs
-
-- Keep comments minimal and only for non-obvious logic
-- Prefer better names or helper extraction over explanatory comments
-- Update `SKILL.md`, `templates/README.md`, and `evals/evals.json` when behavior changes
-- Update this file when commands or workflow expectations change
-
-## Security and Data Handling
+## Security
 
 - Do not broaden scanning to high-risk credential stores by default
 - Exclude secrets, private keys, `.env` files, and credential dumps from tracked content
 - Be especially careful around `.aws`, `.docker`, `.kube`, and GitHub CLI config paths
-- Preserve the behavior that avoids syncing editor caches and transient runtime files
+- Do not sync editor caches or transient runtime files
 
-## Agent Checklist
+## Environment
 
-- Read the relevant `SKILL.md` before changing behavior
-- Check whether docs, templates, evals, and scripts all need coordinated updates
-- After Python edits, run at least a syntax check on touched files
-- After behavior changes, run `python .agents/skills/synconf/scripts/tests.py`
-- After CLI changes, run the relevant `--help` command
-- If formal linting or pytest is added later, document the exact commands here
+- `python` is available; `py -3` is not
+- Update this file when commands, runtime behavior, or workflow expectations change
